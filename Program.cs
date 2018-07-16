@@ -2,6 +2,7 @@
 using System.IO;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
+using System.Linq;
 // using Antlr4.Runtime;
 
 
@@ -49,6 +50,7 @@ namespace test_task
         // "unexpected identifier `flase`", instead of failing at the
         // tokenization stage where all we'd have is "unexpected `l`".
         Identifier,
+        ThreeDots,
     }
 
 
@@ -61,6 +63,22 @@ namespace test_task
 
         public TokenType Type { get; }
         public string Value { get; }
+
+        public bool isSpace() {
+            return this.Type == TokenType.Space;
+        }
+
+        public bool isIdentifier() {
+            return this.Type == TokenType.Identifier;
+        }
+
+        public bool isConcatable() {
+            return (
+                this.isSpace() || 
+                this.isIdentifier() && 
+                !(new Regex(@"\d+$").IsMatch(this.Value))
+            );
+        }
 
         public static Token Match(string value) {
             switch(value)
@@ -85,8 +103,16 @@ namespace test_task
                     return new Token(value, TokenType.If);
                 case "int":
                     return new Token(value, TokenType.IntType);
-                case var sv when new Regex(@"[ \t\r\n]+").IsMatch(value):
+                case "...":
+                    return new Token(value, TokenType.ThreeDots);
+                case "System.out.println":
+                    return new Token(value, TokenType.Sink);
+                case var sv when new Regex(@"^[\s\r\n]+$").IsMatch(sv):
                     return new Token(value, TokenType.Space);
+                case var sv when new Regex(@"^\d+$").IsMatch(sv):
+                    return new Token(value, TokenType.Number);
+                case var sv when new Regex(@"^[\w+_][\w_\.\d]*[\d\w_]*$").IsMatch(sv):
+                    return new Token(value, TokenType.Identifier);
                 default:
                     return null;
             }
@@ -103,17 +129,33 @@ namespace test_task
             List<Token> tokens = new List<Token>();
             List<char> buff = new List<char>();
             Token tok;
-            string current;
+            List<char> old_buff = null;
             foreach (char letter in source) {
                 buff.Add(letter);
-                current = string.Join("", buff.ToArray());
-                tok = Token.Match(current);
-                if (tok != null) {
+                tok = Lexer.Match(buff);
+                if (tok == null && old_buff != null) {
+                    tokens.Add(Lexer.Match(old_buff));
+                    old_buff = null;
+                    buff = new List<char>();
+                    buff.Add(letter);
+                    tok = Lexer.Match(buff);
+                }
+                if (tok != null && !tok.isConcatable()) {
                     tokens.Add(tok);
                     buff = new List<char>();
+                    old_buff = null;
+                }
+                else {
+                    old_buff = new List<char>(buff);
                 }
             }
             return tokens;
+        }
+
+        private static Token Match(List<char> buffer) {
+            return Token.Match(
+                string.Join("", buffer.ToArray())
+            );
         }
     }
 
@@ -160,7 +202,19 @@ namespace test_task
             // foreach (char letter in source) {
             //      Console.Write(letter);
             // }
+
             List<Token> tokens = Lexer.Tokenize(source);
+            // List<Token> tokens = Lexer.Tokenize(source).Aggregate(
+            //     new List<Token>(),
+            //     (acc, val)
+            //      => {
+            //         //Console.Write("-->>>" + acc.Last().Value + " " + acc.Last().isSpace() +"\n");
+            //         if (!(val.isSpace() && acc.Count() > 0 && acc.Last().isSpace())) {
+            //             acc.Add(val);
+            //         }
+            //         return acc;
+            //     } 
+            // );
             foreach (Token tok in tokens) {
                  Console.Write(tok.Type + " " + tok.Value + "\n");
             }
