@@ -1,5 +1,6 @@
 ﻿using System;
 using System.IO;
+using System.Collections;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using System.Linq;
@@ -16,43 +17,42 @@ namespace test_task
         RBracket,
         LSquareBracket,
         RSquareBracket,
-
-//        [Token(Example = "(")]
         LParentheses,
-        
-//        [Token(Example = ")")]
         RParentheses,
-
-//        [Token(Example = ":")]
         Semicolon,
-
-//        [Token(Example = "=")]
         Equals,
-
         Other,
-
-//        [Token(Example = "int")]
         IntType,
-
-//        [Token(Example = "if")]
         If,
-
-//        [Token(Example = "System.out.println")]
         Sink,
-
         Number,
         Space,
-        
-        // Although JSON doesn't have an "identifier" or "keyword"
-        // concept that groups `true`, `false`, and `null`, it's useful
-        // for the tokenizer to be very permissive - it's more informative
-        // to generate an error later at the parsing stage, e.g.
-        // "unexpected identifier `flase`", instead of failing at the
-        // tokenization stage where all we'd have is "unexpected `l`".
         Identifier,
         ThreeDots,
     }
 
+    public enum NodeType
+    {
+       Block,
+       If,
+       Declaration,
+       Assigment,
+       Lookup,
+       VarName,
+       Number,
+    }
+
+    public class TreeNode
+    {
+        public TreeNode(string value, NodeType type) {
+            Type = type;
+            Value = value;
+        }
+        
+        public NodeType Type { get; }
+        public string Value { get; }
+
+    }
 
     public class Token
     {
@@ -116,8 +116,6 @@ namespace test_task
                 default:
                     return null;
             }
-      
-            return null;
         }
 
     }
@@ -157,6 +155,96 @@ namespace test_task
                 string.Join("", buffer.ToArray())
             );
         }
+    }
+
+    public class Parser
+    {
+        public Parser(IEnumerable<Token> input) {
+            Source = input;
+            Ast = new AST(null, null, new List<AST>());
+            this.Prepare();
+        }
+
+
+        public AST Ast { get; set; }
+        public IEnumerable<Token> Source { get; set; }
+
+        // due restrictions no need to handle anything before method body
+        private void Prepare() {
+            this.Source = this.Source.SkipWhile(
+                t => t.Type != TokenType.LBracket
+            );
+        }
+
+        public AST Parse() {
+            AST current = this.Ast;
+            foreach(Token token in this.Source) {
+                switch(token.Type)
+                {
+                    case TokenType.LBracket:
+                        current.Node = new TreeNode(token.Value, NodeType.Block);
+                        current.Children.Add(new AST(current));
+                        current = current.Children.Last();
+                        break;
+                    case TokenType.RBracket:
+                        if (current.isRoot()) {
+                            Console.WriteLine("Parsing Error. No mathing bracket");
+                            Environment.Exit(3);
+                        }
+                        current = current.Parent;
+                        break;
+                    case TokenType.If:
+                        current.Node = new TreeNode(token.Value, NodeType.If);
+                        current.Children.Add(new AST(current));
+                        break;
+                    case TokenType.LParentheses:
+                        break;
+                    case TokenType.RParentheses:
+                        break;
+                    case TokenType.Identifier:
+                        break;
+                    default:
+                        break;
+                }
+            }
+            return this.Ast;
+        }
+
+
+
+
+    }
+
+
+    public class AST
+    {
+        public AST(TreeNode node, AST parent, List<AST> children) {
+            Node = node;
+            Parent = parent;
+            Children = children;
+        }
+
+        public AST(AST parent) {
+            Node = null;
+            Parent = parent;
+            Children = new List <AST>();
+        }
+
+
+        public TreeNode Node { get; set; }
+        public AST Parent { get; }
+        public List<AST> Children { get; }
+
+
+        public bool isLeaf() {
+            return this.Children == null;
+        }
+
+        public bool isRoot() {
+            return this.Parent == null;
+        }
+
+
     }
 
 
@@ -218,6 +306,7 @@ namespace test_task
             foreach (Token tok in tokens) {
                  Console.Write(tok.Type + " " + tok.Value + "\n");
             }
+            AST ast = new Parser(tokens).Parse();
             return 0;
         }
     }
