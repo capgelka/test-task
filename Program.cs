@@ -283,9 +283,6 @@ namespace test_task
 
         private void dumpParents(AST node) {
             while (!node.isRoot()) {
-                if (node.Children[0].Node.Type == null) {
-                    Console.WriteLine("WTF");
-                }
                 Console.WriteLine(node.Node.Type + "   " + node.Children[1].Node.Value + "!!!!\n");
                 foreach( AST ch in node.Children){
                     Console.WriteLine(ch.Node.Type + "   " + ch.Node.Value + "!!!!\n");
