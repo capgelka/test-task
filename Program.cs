@@ -161,7 +161,7 @@ namespace test_task
     {
         public Parser(IEnumerable<Token> input) {
             Source = input;
-            Ast = new AST(null, null, new List<AST>());
+            Ast = new AST(null, null);
             this.Prepare();
         }
 
@@ -283,10 +283,10 @@ namespace test_task
 
     public class AST
     {
-        public AST(TreeNode node, AST parent, List<AST> children) {
+        public AST(TreeNode node, AST parent) {
             Node = node;
             Parent = parent;
-            Children = children;
+            Children = new List <AST>();
         }
 
         public AST(AST parent) {
