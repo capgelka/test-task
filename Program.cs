@@ -171,20 +171,32 @@ namespace test_task
 
         // due restrictions no need to handle anything before method body
         private void Prepare() {
-            this.Source = this.Source.SkipWhile(
-                t => t.Type != TokenType.LBracket
+            this.Source = (
+                this.Source
+                    .SkipWhile(t => t.Type != TokenType.LBracket)
+                    .SkipWhile(t => t.Type != TokenType.LBracket)
             );
+        }
+
+        private void dumpParents(AST node) {
+            while (!node.isRoot()) {
+                Console.WriteLine(node.Node.Type);
+                node = node.Parent;
+            }
         }
 
         public AST Parse() {
             AST current = this.Ast;
+            AST tmp = null;
+            TreeNode tmpNode = null;
             foreach(Token token in this.Source) {
                 switch(token.Type)
                 {
                     case TokenType.LBracket:
                         current.Node = new TreeNode(token.Value, NodeType.Block);
-                        current.Children.Add(new AST(current));
-                        current = current.Children.Last();
+                        tmp = new AST(current);
+                        current.Children.Add(tmp);
+                        current = tmp;
                         break;
                     case TokenType.RBracket:
                         if (current.isRoot()) {
@@ -195,13 +207,66 @@ namespace test_task
                         break;
                     case TokenType.If:
                         current.Node = new TreeNode(token.Value, NodeType.If);
-                        current.Children.Add(new AST(current));
+                        tmp = new AST(current);
+                        current.Children.Add(tmp);
+                        current = tmp;
                         break;
                     case TokenType.LParentheses:
                         break;
                     case TokenType.RParentheses:
                         break;
                     case TokenType.Identifier:
+                        if (current.Node != null && current.Node.Type == NodeType.VarName) {
+                            tmpNode = current.Node;
+                            current.Node = new TreeNode(null, NodeType.Declaration);
+                            tmp = new AST(current);
+                            tmp.Node = tmpNode;
+                            current.Children.Add(tmp);
+                            tmp = new AST(current);
+                            tmp.Node = new TreeNode(token.Value, NodeType.VarName);
+                            current.Children.Add(tmp);
+                        } else {
+                            current.Node = new TreeNode(token.Value, NodeType.VarName);
+                        }
+                        break;
+                    case TokenType.Equals:
+                        if (current.Node.Type != NodeType.VarName) {
+                            Console.WriteLine("Equality not after varname");
+                            this.dumpParents(current);
+                            Environment.Exit(3);
+                        }
+                        tmpNode = current.Node;
+                        current.Node = new TreeNode(null, NodeType.Assigment);
+                        tmp = new AST(current);
+                        tmp.Node = tmpNode;
+                        current.Children.Add(tmp);
+                        current.Node = new TreeNode(token.Value, NodeType.VarName);
+                        break;
+                    case TokenType.RSquareBracket:
+                        break;
+                    case TokenType.LSquareBracket:
+                        if (current.Node.Type != NodeType.If) {
+                            Console.WriteLine("Square bracket not after identifier");
+                            Environment.Exit(3);
+                        }
+                        tmpNode = current.Node;
+                        current.Node = new TreeNode(null, NodeType.Lookup);
+                        tmp = new AST(current);
+                        tmp.Node = tmpNode;
+                        current.Children.Add(tmp);
+                        break;
+                    case TokenType.Number:
+
+                        if (current.Node.Type == NodeType.Lookup && 
+                            current.Node.Type == NodeType.Assigment ) {
+                            
+                            tmp = new AST(current);
+                            tmp.Node = new TreeNode(token.Value, NodeType.Number);
+                            current.Children.Add(tmp);
+                        } else {
+                            Console.WriteLine("Unexpected number");
+                            Environment.Exit(3);
+                        }
                         break;
                     default:
                         break;
