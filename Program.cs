@@ -40,7 +40,6 @@ namespace test_task
        Lookup,
        VarName,
        Number,
-       Unknown,
     }
 
     public class TreeNode
@@ -52,6 +51,105 @@ namespace test_task
         
         public NodeType Type { get; }
         public string Value { get; }
+
+    }
+
+    public abstract class IVisitor<T>
+    {
+        public T Visit(AST ast)
+        {
+            Console.WriteLine("Call on {0}", ast.Node.Type);
+            switch(ast.Node.Type)
+            {
+                case NodeType.Block:
+                    return this.BlockVisitor(ast);
+                case NodeType.If:
+                    return this.IfVisitor(ast);
+                case NodeType.Declaration:
+                    return this.DeclarationVisitor(ast);
+                case NodeType.Assigment:
+                    return this.AssigmentVisitor(ast);
+                case NodeType.Lookup:
+                    return this.LookupVisitor(ast);
+                case NodeType.VarName:
+                    return this.VarNameVisitor(ast);
+                case NodeType.Number:
+                    return this.NumberVisitor(ast);
+                default:
+                    return this.BlockVisitor(ast);
+            }
+        }
+
+        public abstract T BlockVisitor(AST ast);
+
+        public abstract T IfVisitor(AST ast);
+
+        public abstract T DeclarationVisitor(AST ast);
+
+        public abstract T AssigmentVisitor(AST ast);
+
+        public abstract T LookupVisitor(AST ast);
+
+        public abstract T VarNameVisitor(AST ast);
+
+        public abstract T NumberVisitor(AST ast);
+    }
+
+
+    public class SExprVisitor : IVisitor<String>
+    {
+
+        public override String BlockVisitor(AST ast)
+        {
+            return String.Format(
+                "({0})",
+                string.Join("\n", ast.Children.Select(a => this.Visit(a)))
+            );
+        }
+
+        public override String IfVisitor(AST ast)
+        {
+            return String.Format(
+                "(if ({0}) {1})",
+                this.Visit(ast.Children[0]),
+                string.Join("\n", ast.Children.Skip(1).Select(a => this.Visit(a)))
+            );
+        }
+
+        public override String DeclarationVisitor(AST ast)
+        {
+            return String.Format(
+                "(set {0})",
+                string.Join(" ", ast.Children.Select(a => this.Visit(a)))
+            );
+        }
+
+        public override String AssigmentVisitor(AST ast)
+        {
+            return String.Format(
+                "(= {0})",
+                string.Join(" ", ast.Children.Select(a => this.Visit(a)))
+            );
+        }
+
+        public override String LookupVisitor(AST ast)
+        {
+            return String.Format(
+                "{0}[{1}]",
+                string.Join("", ast.Children.Select(a => this.Visit(a)))
+            );
+        }
+
+        public override String VarNameVisitor(AST ast)
+        {
+            return ast.Node.Value;
+        }
+
+        public override String NumberVisitor(AST ast)
+        {
+            return ast.Node.Value;
+        }
+
 
     }
 
@@ -221,8 +319,9 @@ namespace test_task
                         break;
                     case TokenType.RBracket:
                         if (current.isRoot()) {
-                            Console.WriteLine("Parsing Error. No mathing bracket");
-                            Environment.Exit(3);
+                            // Console.WriteLine("Parsing Error. No mathing bracket");
+                            // Environment.Exit(3);
+                            break;
                         }
                         current = current.Parent;
                         break;
@@ -241,8 +340,7 @@ namespace test_task
                         // current = current.Parent;
                         break;
                     case TokenType.Semicolon:
-                        if (current.Node.Type == NodeType.Declaration ||
-                            current.Node.Type == NodeType.Unknown) {
+                        if (current.Node.Type == NodeType.Declaration) {
 
                             current = current.Parent;
                         }
@@ -428,6 +526,7 @@ namespace test_task
             //      Console.Write(tok.Type + " " + tok.Value + "\n");
             // }
             AST ast = new Parser(tokens).Parse();
+            Console.WriteLine(new SExprVisitor().Visit(ast));
             return 0;
         }
     }
