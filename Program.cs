@@ -40,6 +40,7 @@ namespace test_task
        Lookup,
        VarName,
        Number,
+       Unknown,
     }
 
     public class TreeNode
@@ -174,13 +175,32 @@ namespace test_task
             this.Source = (
                 this.Source
                     .SkipWhile(t => t.Type != TokenType.LBracket)
+                    .SkipWhile(t => t.Type == TokenType.LBracket)
                     .SkipWhile(t => t.Type != TokenType.LBracket)
             );
+            // foreach (Token tok in this.Source) {
+            //      Console.Write(tok.Type + " " + tok.Value + "\n");
+            // }
         }
 
         private void dumpParents(AST node) {
             while (!node.isRoot()) {
-                Console.WriteLine(node.Node.Type);
+                if (node.Children[0].Node.Type == null) {
+                    Console.WriteLine("WTF");
+                }
+                Console.WriteLine(node.Node.Type + "   " + node.Children[1].Node.Value + "!!!!\n");
+                foreach( AST ch in node.Children){
+                    Console.WriteLine(ch.Node.Type + "   " + ch.Node.Value + "!!!!\n");
+                }
+                Console.WriteLine(
+                    node.Node.Type + 
+                    ": <" + 
+                    string.Join(", ", node.Children.Select(
+                        s => (s.Node.Type + " (" + s.Node.Value ?? null + ")"))
+                    ) + 
+                    ">"
+                );
+
                 node = node.Parent;
             }
         }
@@ -190,6 +210,7 @@ namespace test_task
             AST tmp = null;
             TreeNode tmpNode = null;
             foreach(Token token in this.Source) {
+                Console.Write(token.Type + " " + token.Value + " " + current.Depth() + "\n");
                 switch(token.Type)
                 {
                     case TokenType.LBracket:
@@ -206,6 +227,9 @@ namespace test_task
                         current = current.Parent;
                         break;
                     case TokenType.If:
+                        if (current == null ) {
+                            Console.WriteLine("WTF?");
+                        }
                         current.Node = new TreeNode(token.Value, NodeType.If);
                         tmp = new AST(current);
                         current.Children.Add(tmp);
@@ -214,24 +238,43 @@ namespace test_task
                     case TokenType.LParentheses:
                         break;
                     case TokenType.RParentheses:
+                        // current = current.Parent;
+                        break;
+                    case TokenType.Semicolon:
+                        if (current.Node.Type == NodeType.Declaration ||
+                            current.Node.Type == NodeType.Unknown) {
+
+                            current = current.Parent;
+                        }
+                        break;
+                    case TokenType.IntType:
+                        if (current.Node != null) {
+                            Console.WriteLine("Unexpected declaration");
+                            this.dumpParents(current);
+                            Environment.Exit(3);
+                        }
+                        current.Node = new TreeNode("", NodeType.Declaration);
+                        tmp = new AST(current);
+                        current.Children.Add(tmp);
                         break;
                     case TokenType.Identifier:
-                        if (current.Node != null && current.Node.Type == NodeType.VarName) {
-                            tmpNode = current.Node;
-                            current.Node = new TreeNode(null, NodeType.Declaration);
-                            tmp = new AST(current);
-                            tmp.Node = tmpNode;
-                            current.Children.Add(tmp);
+                        if (current.Node != null && current.Node.Type == NodeType.Declaration) {
+                            // tmpNode = current.Node;
+                            // current.Node = new TreeNode(null, NodeType.Declaration);
+                            // tmp = new AST(current);
+                            // tmp.Node = tmpNode;
+                            // current.Children.Add(tmp);
                             tmp = new AST(current);
                             tmp.Node = new TreeNode(token.Value, NodeType.VarName);
                             current.Children.Add(tmp);
                         } else {
+                            Console.WriteLine("THIS");
                             current.Node = new TreeNode(token.Value, NodeType.VarName);
                         }
                         break;
                     case TokenType.Equals:
                         if (current.Node.Type != NodeType.VarName) {
-                            Console.WriteLine("Equality not after varname");
+                            Console.WriteLine("Equality not after varname " + current.Node);
                             this.dumpParents(current);
                             Environment.Exit(3);
                         }
@@ -240,12 +283,14 @@ namespace test_task
                         tmp = new AST(current);
                         tmp.Node = tmpNode;
                         current.Children.Add(tmp);
-                        current.Node = new TreeNode(token.Value, NodeType.VarName);
+                        // tmp = new AST(current);
+                        // tmp.Node = new TreeNode(token.Value, NodeType.VarName);
                         break;
                     case TokenType.RSquareBracket:
+                        current = current.Parent;
                         break;
                     case TokenType.LSquareBracket:
-                        if (current.Node.Type != NodeType.If) {
+                        if (current.Node.Type != NodeType.VarName) {
                             Console.WriteLine("Square bracket not after identifier");
                             Environment.Exit(3);
                         }
@@ -257,7 +302,7 @@ namespace test_task
                         break;
                     case TokenType.Number:
 
-                        if (current.Node.Type == NodeType.Lookup && 
+                        if (current.Node.Type == NodeType.Lookup || 
                             current.Node.Type == NodeType.Assigment ) {
                             
                             tmp = new AST(current);
@@ -265,6 +310,7 @@ namespace test_task
                             current.Children.Add(tmp);
                         } else {
                             Console.WriteLine("Unexpected number");
+                            this.dumpParents(current);
                             Environment.Exit(3);
                         }
                         break;
@@ -307,6 +353,16 @@ namespace test_task
 
         public bool isRoot() {
             return this.Parent == null;
+        }
+
+        public int Depth() {
+            int depth = 0;
+            AST current = this;
+            while (!current.isRoot()) {
+                depth++;
+                current = current.Parent;
+            }
+            return depth;
         }
 
 
@@ -368,9 +424,9 @@ namespace test_task
             //         return acc;
             //     } 
             // );
-            foreach (Token tok in tokens) {
-                 Console.Write(tok.Type + " " + tok.Value + "\n");
-            }
+            // foreach (Token tok in tokens) {
+            //      Console.Write(tok.Type + " " + tok.Value + "\n");
+            // }
             AST ast = new Parser(tokens).Parse();
             return 0;
         }
