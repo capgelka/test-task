@@ -139,7 +139,8 @@ namespace test_task
         {
             return String.Format(
                 "{0}[{1}]",
-                string.Join("", ast.Children.Select(a => this.Visit(a)))
+                this.Visit(ast.Children[0]),
+                this.Visit(ast.Children[1])
             );
         }
 
@@ -310,8 +311,13 @@ namespace test_task
         }
 
         private void Error(string Message) {
-            Console.WriteLine("Parse error {0}", Message);
+            Console.WriteLine("Parse error: {0}", Message);
             Environment.Exit(3);
+        }
+
+        private Token Next(IEnumerator<Token> stream) {
+            stream.MoveNext();
+            return stream.Current;
         }
 
         public AST Parse() {
@@ -320,26 +326,20 @@ namespace test_task
 
         private AST ParseStart(IEnumerable<Token> stream) {
             AST current = this.Ast;
-            Token tok = stream.Take(1).Last();
-            var tok2 = stream.Take(1).Last();
-            Console.WriteLine("{0} {1}", tok.Type, tok.Value);
-            Console.WriteLine("{0} {1}", tok2.Type, tok2.Value);
-            if (tok.Type == TokenType.LBracket) {
-                stream = stream.Skip(1);
-                return this.ParseBlock(current, stream);
+            var tokens = stream.GetEnumerator();
+            if (Next(tokens).Type == TokenType.LBracket) {
+                return this.ParseBlock(current, tokens);
             }
             this.Error("No entry block found");
             return null; // Stupid compiler
         }
 
-        private AST ParseBlock(AST current, IEnumerable<Token> stream) {
-            // var tokens = stream.GetEnumerator();
-            // Token current;
-            // int counter = 0;
-            // while (tokens.MoveNext()) {
-            //     current = tokens.Current;
+        private AST ParseBlock(AST current, IEnumerator<Token> stream) {
             current.Node = new TreeNode("Block", NodeType.Block);
-            foreach(Token tok in stream) {
+            Token tok;
+            while (stream.MoveNext()) {
+                tok = stream.Current;
+            // foreach(Token tok in stream) {
                 switch (tok.Type)
                 {   
                     case TokenType.IntType:
@@ -370,19 +370,18 @@ namespace test_task
                         );
                         break;
                 }
-                stream = stream.Skip(1);
             }
             this.Error("Unexpected stream end");
             return current;
         }
 
 
-        private AST ParseSink(AST current, IEnumerable<Token> stream) {
+        private AST ParseSink(AST current, IEnumerator<Token> stream) {
             AST ast = new AST(
                 new TreeNode("System.out.println", NodeType.Sink),
                 current
             );
-            Token token = stream.Take(1).Last();
+            Token token = Next(stream);
             if (token.Type != TokenType.Identifier) {
                 this.Error("There must be varname in sink end");
             }
@@ -396,8 +395,8 @@ namespace test_task
         }
 
 
-        private AST ParseIf(AST current, IEnumerable<Token> stream) {
-            Token tok = stream.Take(1).Last();
+        private AST ParseIf(AST current, IEnumerator<Token> stream) {
+            Token tok = Next(stream);
             if (tok.Type != TokenType.Identifier) {
                 this.Error("There must be an identifier in the start of if condition");
             }
@@ -405,14 +404,14 @@ namespace test_task
                 new TreeNode("", NodeType.If),
                 current
             );
-            Token nextToken = stream.Take(1).Last();
+            Token nextToken = Next(stream);
             switch(nextToken.Type)
             {
                 case TokenType.Number:
                     ast.Children.Add(
                         ParseLookup(ast, tok, nextToken)
                     );
-                    if (stream.Take(1).Last().Type != TokenType.LBracket) {
+                    if (Next(stream).Type != TokenType.LBracket) {
                         this.Error("If must have a body block after condition");
                     }
                     break;
@@ -454,8 +453,8 @@ namespace test_task
             return ast;
         }
 
-        private AST ParseDeclaration(AST current, IEnumerable<Token> stream) {
-            Token token = stream.Take(1).Last();
+        private AST ParseDeclaration(AST current, IEnumerator<Token> stream) {
+            Token token = Next(stream);
 
             if (token.Type != TokenType.Identifier) {
                 this.Error(
@@ -479,8 +478,8 @@ namespace test_task
             return ast;
         }
 
-        private AST ParseAssigment(AST current, Token token, IEnumerable<Token> stream) {
-            Token nextToken = stream.Take(1).Last();
+        private AST ParseAssigment(AST current, Token token, IEnumerator<Token> stream) {
+            Token nextToken = Next(stream);
 
             if (token.Type != TokenType.Identifier) {
                 this.Error("There must be a number in the end of assigment expression");
@@ -503,164 +502,6 @@ namespace test_task
             );
             return ast;
         }
-
-        private AST BadParse() {
-            AST current = this.Ast;
-            AST tmp = null;
-            TreeNode tmpNode = null;
-            foreach(Token token in this.Source) {
-                Console.Write(token.Type + " " + token.Value + " " + current.Depth() + "\n");
-                switch(token.Type)
-                {
-                    case TokenType.LBracket:
-                        if (current.Node != null && current.Node.Type == NodeType.If) {
-                            tmp = new AST(current);
-                            current.Children.Add(tmp);
-                            current = tmp;
-                        }
-                        current.Node = new TreeNode(token.Value, NodeType.Block);
-                        tmp = new AST(current);
-                        current.Children.Add(tmp);
-                        current = tmp;
-                        break;
-                    case TokenType.RBracket:
-                        if (current.isRoot()) {
-                            // Console.WriteLine("Parsing Error. No mathing bracket");
-                            // Environment.Error(3);
-                            break;
-                        }
-                        current = current.Parent;
-                        if (!current.isRoot() && current.Parent.Node.Type == NodeType.If) {
-                            current = current.Parent;
-                        }
-                        break;
-                    case TokenType.If:
-                        if (current == null ) {
-                            Console.WriteLine("WTF?");
-                        }
-                        current.Node = new TreeNode(token.Value, NodeType.If);
-                        tmp = new AST(current);
-                        current.Children.Add(tmp);
-                        current = tmp;
-                        break;
-                    case TokenType.LParentheses:
-                        break;
-                    case TokenType.RParentheses:
-                        current = current.Parent;
-                        break;
-                    case TokenType.Semicolon:
-                        // if (current.Node.Type == NodeType.Declaration) {
-                        //     current = current.Parent;
-                        // }
-                        if (current.isRoot()) {
-                            Console.WriteLine("Semicolon can't be in root");
-                            this.dumpParents(current);
-                            break;
-                            Environment.Exit(3);
-                        }
-                        current = current.Parent;
-                        tmp = new AST(current);
-                        current.Children.Add(tmp);
-                        current = tmp;
-                        break;
-                    case TokenType.IntType:
-                        if (current.Node != null) {
-                            Console.WriteLine("Unexpected declaration");
-                            this.dumpParents(current);
-                            Environment.Exit(3);
-                        }
-                        current.Node = new TreeNode("", NodeType.Declaration);
-                        // tmp = new AST(current);
-                        // current.Children.Add(tmp);
-                        break;
-                    case TokenType.Identifier:
-                        if (current.Node != null &&
-                            current.Node.Type == NodeType.Declaration) {
-                            // tmpNode = current.Node;
-                            // current.Node = new TreeNode(null, NodeType.Declaration);
-                            // tmp = new AST(current);
-                            // tmp.Node = tmpNode;
-                            // current.Children.Add(tmp);
-                            tmp = new AST(current);
-                            tmp.Node = new TreeNode(token.Value, NodeType.VarName);
-                            current.Children.Add(tmp);
-                        // } 
-                        // else if (
-                        //     current.Node != null && current.Node != null &&
-                        //     current.Node.Parent.Type == NodeType.If
-                        // ) {
-
-                        } else {
-                            current.Node = new TreeNode(token.Value, NodeType.VarName);
-                            Console.WriteLine("THIS {0}", current.Node.Type);
-                        }
-
-                        // if (
-                        //     current.Node != null && current.Node != null &&
-                        //     current.Node.Parent.Type == NodeType.If
-                        // ) {
-                        //     current.
-                        // }
-                        break;
-                    case TokenType.Equals:
-                        if (current.Node.Type != NodeType.VarName) {
-                            Console.WriteLine("Equality not after varname " + current.Node.Type);
-                            this.dumpParents(current);
-                            Environment.Exit(3);
-                        }
-                        tmpNode = current.Node;
-                        current.Node = new TreeNode(null, NodeType.Assigment);
-                        tmp = new AST(current);
-                        tmp.Node = tmpNode;
-                        current.Children.Add(tmp);
-                        // tmp = new AST(current);
-                        // tmp.Node = new TreeNode(token.Value, NodeType.VarName);
-                        break;
-                    case TokenType.RSquareBracket:
-                        //current = current.Parent;
-                        break;
-                    case TokenType.LSquareBracket:
-                        if (current.Node.Type != NodeType.VarName &&
-                            (current.Children.Count() > 0 && 
-                                current.Children.Last().Node.Type != NodeType.VarName)
-                            ) {
-                            
-                            Console.WriteLine(
-                                "Square bracket not after identifier {0}",
-                                current.Node.Type
-                            );
-                            Environment.Exit(3);
-                        }
-                        tmpNode = current.Node;
-                        current.Node = new TreeNode(null, NodeType.Lookup);
-                        tmp = new AST(current);
-                        tmp.Node = tmpNode;
-                        current.Children.Add(tmp);
-                        break;
-                    case TokenType.Number:
-
-                        if (current.Node.Type == NodeType.Lookup || 
-                            current.Node.Type == NodeType.Assigment ) {
-                            
-                            tmp = new AST(current);
-                            tmp.Node = new TreeNode(token.Value, NodeType.Number);
-                            current.Children.Add(tmp);
-                        } else {
-                            Console.WriteLine("Unexpected number");
-                            this.dumpParents(current);
-                            Environment.Exit(3);
-                        }
-                        break;
-                    default:
-                        break;
-                }
-            }
-            return this.Ast;
-        }
-
-
-
-
     }
 
 
