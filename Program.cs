@@ -57,9 +57,26 @@ namespace test_task
 
     public abstract class IVisitor<T>
     {
+        private HashSet<TreeNode> Visited { get; set; }
+
         public T Visit(AST ast)
         {
             Console.WriteLine("Call on {0}, depth {1}", ast.Node.Type, ast.Depth());
+            ast.Show();
+            if (Visited == null) {
+                Visited = new HashSet<TreeNode>();
+            }
+            if (ast.Node != null && Visited.Contains(ast.Node)) {
+                Console.WriteLine(
+                    String.Format(
+                        "{0} ({1}) has been already visited",
+                        ast.Node.Type,
+                        ast.Node.Value
+                    )
+                );
+                Environment.Exit(5);
+            }
+            Visited.Add(ast.Node);
             switch(ast.Node.Type)
             {
                 case NodeType.Block:
@@ -76,8 +93,11 @@ namespace test_task
                     return this.VarNameVisitor(ast);
                 case NodeType.Number:
                     return this.NumberVisitor(ast);
+                case NodeType.Sink:
+                    return this.SinkVisitor(ast);
                 default:
                     Console.WriteLine("WTF?");
+                    Environment.Exit(10);
                     return this.BlockVisitor(ast);
             }
         }
@@ -95,6 +115,8 @@ namespace test_task
         public abstract T VarNameVisitor(AST ast);
 
         public abstract T NumberVisitor(AST ast);
+
+        public abstract T SinkVisitor(AST ast);
     }
 
 
@@ -104,7 +126,7 @@ namespace test_task
         public override String BlockVisitor(AST ast)
         {
             return String.Format(
-                "({0})",
+                "(\n\t{0})",
                 string.Join("\n", ast.Children.Select(a => this.Visit(a)))
             );
         }
@@ -152,6 +174,11 @@ namespace test_task
         public override String NumberVisitor(AST ast)
         {
             return ast.Node.Value;
+        }
+
+        public override String SinkVisitor(AST ast)
+        {
+            return String.Format("(sink {0})", this.Visit(ast.Children.Last()));
         }
 
 
@@ -269,8 +296,8 @@ namespace test_task
         }
 
 
-        public AST Ast { get; set; }
-        public IEnumerable<Token> Source { get; set; }
+        public AST Ast { get; }
+        private IEnumerable<Token> Source { get; set; }
 
         // due restrictions no need to handle some things
         private void Prepare() {
@@ -290,25 +317,27 @@ namespace test_task
                     .SkipWhile(t => t.Type != TokenType.LBracket)
                     .Where(t => !uselessTokens.Contains(t.Type))
             );
-            // foreach (Token tok in this.Source) {
-            //      Console.Write(tok.Type + " " + tok.Value + "\n");
-            // }
+            // foreach (Token tok in Source) {
+            //     Console.WriteLine(
+            //         String.Format("{0} {1}", tok.Type, tok.Value)
+            //     );
+            //}
         }
 
-        private void dumpParents(AST node) {
-            while (!node.isRoot()) {
-                Console.WriteLine(
-                    node.Node.Type + 
-                    ": <" + 
-                    string.Join(", ", node.Children.Select(
-                        s => (s.Node.Type + " (\"" + s.Node.Value + "\")"))
-                    ) + 
-                    ">"
-                );
+        // private void dumpParents(AST node) {
+        //     while (!node.isRoot()) {
+        //         Console.WriteLine(
+        //             node.Node.Type + 
+        //             ": <" + 
+        //             string.Join(", ", node.Children.Select(
+        //                 s => (s.Node.Type + " (\"" + s.Node.Value + "\")"))
+        //             ) + 
+        //             ">"
+        //         );
 
-                node = node.Parent;
-            }
-        }
+        //         node = node.Parent;
+        //     }
+        // }
 
         private void Error(string Message) {
             Console.WriteLine("Parse error: {0}", Message);
@@ -335,7 +364,17 @@ namespace test_task
         }
 
         private AST ParseBlock(AST current, IEnumerator<Token> stream) {
-            current.Node = new TreeNode("Block", NodeType.Block);
+            AST ast;
+            if (current.isRoot()) {
+                current.Node = new TreeNode("RootBlock", NodeType.Block);
+                ast = current;
+            }
+            else {
+                ast = new AST(
+                    new TreeNode("Block", NodeType.Block),
+                    current
+                );
+            }
             Token tok;
             while (stream.MoveNext()) {
                 tok = stream.Current;
@@ -343,27 +382,27 @@ namespace test_task
                 switch (tok.Type)
                 {   
                     case TokenType.IntType:
-                        current.Children.Add(
-                            ParseDeclaration(current, stream)
+                        ast.Children.Add(
+                            ParseDeclaration(ast, stream)
                         );
                         break;
                     case TokenType.Identifier:
-                        current.Children.Add(
-                            ParseAssigment(current, tok, stream)
+                        ast.Children.Add(
+                            ParseAssigment(ast, tok, stream)
                         );
                         break;
                     case TokenType.If:
-                        current.Children.Add(
-                            ParseIf(current, stream)
+                        ast.Children.Add(
+                            ParseIf(ast, stream)
                         );
                         break;
                     case TokenType.Sink:
-                        current.Children.Add(
-                            ParseSink(current, stream)
+                        ast.Children.Add(
+                            ParseSink(ast, stream)
                         );
                         break;
                     case TokenType.RBracket:
-                        return current;
+                        return ast;
                     default:
                         this.Error(
                             String.Format("{0} is not valid Token for block", tok.Type)
@@ -372,7 +411,7 @@ namespace test_task
                 }
             }
             this.Error("Unexpected stream end");
-            return current;
+            return ast;
         }
 
 
@@ -547,6 +586,17 @@ namespace test_task
                 current = current.Parent;
             }
             return depth;
+        }
+
+        public void Show() {
+            Console.WriteLine(
+                Node.Type + 
+                ": <" + 
+                string.Join(", ", Children.Select(
+                    s => (s.Node.Type + " (\"" + s.Node.Value + "\")"))
+                ) + 
+                ">"
+            );
         }
 
 
