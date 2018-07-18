@@ -58,7 +58,7 @@ namespace test_task
     {
         public T Visit(AST ast)
         {
-            Console.WriteLine("Call on {0}", ast.Node.Type);
+            Console.WriteLine("Call on {0}, depth {1}", ast.Node.Type, ast.Depth());
             switch(ast.Node.Type)
             {
                 case NodeType.Block:
@@ -76,6 +76,7 @@ namespace test_task
                 case NodeType.Number:
                     return this.NumberVisitor(ast);
                 default:
+                    Console.WriteLine("WTF?");
                     return this.BlockVisitor(ast);
             }
         }
@@ -118,6 +119,7 @@ namespace test_task
 
         public override String DeclarationVisitor(AST ast)
         {
+            Console.WriteLine("{0}", (ast.Children[0].Node ?? new TreeNode("OLOLO", NodeType.Block)).Value);
             return String.Format(
                 "(set {0})",
                 string.Join(" ", ast.Children.Select(a => this.Visit(a)))
@@ -142,7 +144,7 @@ namespace test_task
 
         public override String VarNameVisitor(AST ast)
         {
-            return ast.Node.Value;
+            return "VARNAME";//ast.Node.Value;
         }
 
         public override String NumberVisitor(AST ast)
@@ -309,6 +311,11 @@ namespace test_task
                 switch(token.Type)
                 {
                     case TokenType.LBracket:
+                        if (current.Node != null && current.Node.Type == NodeType.If) {
+                            tmp = new AST(current);
+                            current.Children.Add(tmp);
+                            current = tmp;
+                        }
                         current.Node = new TreeNode(token.Value, NodeType.Block);
                         tmp = new AST(current);
                         current.Children.Add(tmp);
@@ -321,15 +328,18 @@ namespace test_task
                             break;
                         }
                         current = current.Parent;
+                        if (current.Node.Type == NodeType.If) {
+                            current = current.Parent;
+                        }
                         break;
                     case TokenType.If:
                         if (current == null ) {
                             Console.WriteLine("WTF?");
                         }
                         current.Node = new TreeNode(token.Value, NodeType.If);
-                        tmp = new AST(current);
-                        current.Children.Add(tmp);
-                        current = tmp;
+                        // tmp = new AST(current);
+                        // current.Children.Add(tmp);
+                        // current = tmp;
                         break;
                     case TokenType.LParentheses:
                         break;
@@ -337,10 +347,13 @@ namespace test_task
                         // current = current.Parent;
                         break;
                     case TokenType.Semicolon:
-                        if (current.Node.Type == NodeType.Declaration) {
-
-                            current = current.Parent;
-                        }
+                        // if (current.Node.Type == NodeType.Declaration) {
+                        //     current = current.Parent;
+                        // }
+                        current = current.Parent;
+                        tmp = new AST(current);
+                        current.Children.Add(tmp);
+                        current = tmp;
                         break;
                     case TokenType.IntType:
                         if (current.Node != null) {
@@ -349,11 +362,13 @@ namespace test_task
                             Environment.Exit(3);
                         }
                         current.Node = new TreeNode("", NodeType.Declaration);
-                        tmp = new AST(current);
-                        current.Children.Add(tmp);
+                        // tmp = new AST(current);
+                        // current.Children.Add(tmp);
                         break;
                     case TokenType.Identifier:
-                        if (current.Node != null && current.Node.Type == NodeType.Declaration) {
+                        if (current.Node != null &&
+                            (current.Node.Type == NodeType.Declaration ||
+                            current.Node.Type == NodeType.If)) {
                             // tmpNode = current.Node;
                             // current.Node = new TreeNode(null, NodeType.Declaration);
                             // tmp = new AST(current);
@@ -363,8 +378,8 @@ namespace test_task
                             tmp.Node = new TreeNode(token.Value, NodeType.VarName);
                             current.Children.Add(tmp);
                         } else {
-                            Console.WriteLine("THIS");
                             current.Node = new TreeNode(token.Value, NodeType.VarName);
+                            Console.WriteLine("THIS {0}", current.Node.Type);
                         }
                         break;
                     case TokenType.Equals:
@@ -382,11 +397,18 @@ namespace test_task
                         // tmp.Node = new TreeNode(token.Value, NodeType.VarName);
                         break;
                     case TokenType.RSquareBracket:
-                        current = current.Parent;
+                        //current = current.Parent;
                         break;
                     case TokenType.LSquareBracket:
-                        if (current.Node.Type != NodeType.VarName) {
-                            Console.WriteLine("Square bracket not after identifier");
+                        if (current.Node.Type != NodeType.VarName &&
+                            (current.Children.Count() > 0 && 
+                                current.Children.Last().Node.Type != NodeType.VarName)
+                            ) {
+                            
+                            Console.WriteLine(
+                                "Square bracket not after identifier {0}",
+                                current.Node.Type
+                            );
                             Environment.Exit(3);
                         }
                         tmpNode = current.Node;
