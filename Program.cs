@@ -5,10 +5,16 @@ using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using System.Linq;
 
+using Microsoft.SolverFoundation.Solvers;
+
+
+static class Constants
+{
+    public const bool Debug = false;
+}
+
 namespace test_task
 {
-
-
     public enum TokenType
     {
         LBracket,
@@ -60,22 +66,24 @@ namespace test_task
 
         public T Visit(AST ast)
         {
-            Console.WriteLine("Call on {0}, depth {1}", ast.Node.Type, ast.Depth());
-            ast.Show();
-            if (Visited == null) {
-                Visited = new HashSet<TreeNode>();
+            if (Constants.Debug) {
+                Console.WriteLine("Call on {0}, depth {1}", ast.Node.Type, ast.Depth());
+                ast.Show();
+                if (Visited == null) {
+                    Visited = new HashSet<TreeNode>();
+                }
+                if (ast.Node != null && Visited.Contains(ast.Node)) {
+                    Console.WriteLine(
+                        String.Format(
+                            "{0} ({1}) has been already visited",
+                            ast.Node.Type,
+                            ast.Node.Value
+                        )
+                    );
+                    Environment.Exit(5);
+                }
+                Visited.Add(ast.Node);
             }
-            if (ast.Node != null && Visited.Contains(ast.Node)) {
-                Console.WriteLine(
-                    String.Format(
-                        "{0} ({1}) has been already visited",
-                        ast.Node.Type,
-                        ast.Node.Value
-                    )
-                );
-                Environment.Exit(5);
-            }
-            Visited.Add(ast.Node);
             switch(ast.Node.Type)
             {
                 case NodeType.Block:
@@ -185,52 +193,65 @@ namespace test_task
     {
         public State()
         {
-            TreeNode Node = null;
-            String Info = "";
-            Dictionary<int, HashSet<int>> Positive = new Dictionary<int, HashSet<int>>();
-            Dictionary<int, HashSet<int>> Negative = new Dictionary<int, HashSet<int>>();
+            Info = "";
+            Data = new Dictionary<int, ConstraintSystem>();
         }  
 
-        private Dictionary<int, HashSet<int>> Positive { get; set; }
-        private Dictionary<int, HashSet<int>> Negative { get; set; }
+        private Dictionary<int, ConstraintSystem> Data { get; set; }
+        // private Dictionary<int, HashSet<int>> Negative { get; set; }
         public TreeNode Node { get; set; }
         public String Info { get; set; }
 
-        public void AddVar(int var)
+        public void AddVar(int value)
         {
-            Positive.Add(var, new HashSet<int>());
+            this.Data.Add(value, ConstraintSystem.CreateSolver());
         }
 
-        public void AddConstraint(int var, int constraint)
+        public State Update(State other)
         {
-            Positive[var].Add(constraint);
-        }
-
-        public void Update(State other)
-        {
-            foreach(var k in other.Positive.Keys) {
-                if (!Positive.ContainsKey(k)) {
-                    AddVar(k);
-                    Positive[k].UnionWith(other.Positive[k]);
-
+            foreach(var k in other.Data.Keys) {
+                if (!Data.ContainsKey(k)) {
+                    this.AddVar(k);
+                    foreach(var c in other.Data[k].Constraints) {
+                        Data[k].AddConstraints(c);
+                    }
                 }
                 else {
-                    foreach(var pk in Positive.Keys) {
-                        if (!Negative.ContainsKey(pk) && pk != k) {
-                            Negative.Add(pk, other.Positive[k]);
-                        }
+                    CspTerm tmp = other.Data[k].CreateBoolean();
+                    foreach(var c in other.Data[k].Constraints) {
+                        tmp = Data[k].And(tmp, c);
                     }
-                    // Positive[k].
+
                 }
-                // AddConstraint(k, other[k]);
+            //     else {
+            //         foreach(var pk in Positive.Keys) {
+            //             if (!Negative.ContainsKey(pk) && pk != k) {
+            //                 Negative.Add(pk, other.Positive[k].MemberwiseClone());
+            //             }
+            //         }
+                    // Positive[k].
+            //     }
+            //     // AddConstraint(k, other[k]);
             }
+            return this;
         }
 
-        // public static State Join(IEnumerable<State> states)
-        // {
+        public State UpdateOnConstraint(int constrint, State other)
+        {
+            return this;
+        }
 
-        // }
-
+        public List<int> PossibleValues()
+        {
+            var buff = new List<int>();
+            foreach (var k in Data.Keys) {
+                Console.WriteLine(Data[k]);
+                if (Data[k].Solve().HasFoundSolution) {
+                    buff.Add(k);
+                }
+            }
+            return buff;
+        }
 
     }
 
@@ -246,29 +267,36 @@ namespace test_task
         public override State BlockVisitor(AST ast)
         {
             State st = new State();
-            foreach(State a in ast.Children.Select(a => this.Visit(a))) {
-                st.Update(a);
+            foreach(State s in ast.Children.Select(c => this.Visit(c))) {
+                if (s.Info == "") {
+                    st.Update(s);
+                }
+                else {
+                    var xval = Convert.ToInt32(s.Info);
+                    st.AddVar(xval);
+                }
             }
             return st;
         }
 
         public override State IfVisitor(AST ast)
         {
-            int constraint = Convert.ToInt32(Visit(ast.Children[0]).Info);
-            Visit(ast.Children[1]);
-            return new State();
+            return new State().UpdateOnConstraint(
+                Convert.ToInt32(Visit(ast.Children[0]).Info),
+                Visit(ast.Children[1])
+            );
         }
 
         // don't need this
         public override State DeclarationVisitor(AST ast)
         {
-            return null;
+            return new State();
         }
 
         public override State AssigmentVisitor(AST ast)
         {
             State st = Visit(ast.Children[1]);
-            st.Node = new TreeNode("", NodeType.Assigment);
+            // st.Node = new TreeNode("", NodeType.Assigment);
             return st;
         }
 
@@ -431,27 +459,14 @@ namespace test_task
                     .SkipWhile(t => t.Type != TokenType.LBracket)
                     .Where(t => !uselessTokens.Contains(t.Type))
             );
-            // foreach (Token tok in Source) {
-            //     Console.WriteLine(
-            //         String.Format("{0} {1}", tok.Type, tok.Value)
-            //     );
-            //}
+            if (Constants.Debug) {
+                foreach (Token tok in Source) {
+                    Console.WriteLine(
+                        String.Format("{0} {1}", tok.Type, tok.Value)
+                    );
+                }
+            }
         }
-
-        // private void dumpParents(AST node) {
-        //     while (!node.isRoot()) {
-        //         Console.WriteLine(
-        //             node.Node.Type + 
-        //             ": <" + 
-        //             string.Join(", ", node.Children.Select(
-        //                 s => (s.Node.Type + " (\"" + s.Node.Value + "\")"))
-        //             ) + 
-        //             ">"
-        //         );
-
-        //         node = node.Parent;
-        //     }
-        // }
 
         private void Error(string Message) {
             Console.WriteLine("Parse error: {0}", Message);
@@ -702,16 +717,14 @@ namespace test_task
             return depth;
         }
 
-        public void Show() {
-            Console.WriteLine(
-                Node.Type + 
-                ": <" + 
+        public void Show() => Console.WriteLine(
+                Node.Type +
+                ": <" +
                 string.Join(", ", Children.Select(
                     s => (s.Node.Type + " (\"" + s.Node.Value + "\")"))
-                ) + 
+                ) +
                 ">"
             );
-        }
 
 
     }
@@ -747,36 +760,23 @@ namespace test_task
                 Console.WriteLine(e.Message);
                 return 2;
             }
-            // AntlrInputStream inputStream = new AntlrInputStream(sr);
-            // JavaLexer javaLexer = new JavaLexer(inputStream);            
-            // CommonTokenStream commonTokenStream = new CommonTokenStream(javaLexer);
-            // JavaParser javaParser = new JavaParser(commonTokenStream);
 
-            // JavaParser.ExpressionContext expressionContext = javaParser.expression();
-            // JavaParserBaseVisitor visitor = new JavaParserBaseVisitor();
-
-            // Console.WriteLine(visitor.Visit(expressionContext));
-            // foreach (char letter in source) {
-            //      Console.Write(letter);
-            // }
-
-            List<Token> tokens = Lexer.Tokenize(source);
-            // List<Token> tokens = Lexer.Tokenize(source).Aggregate(
-            //     new List<Token>(),
-            //     (acc, val)
-            //      => {
-            //         //Console.Write("-->>>" + acc.Last().Value + " " + acc.Last().isSpace() +"\n");
-            //         if (!(val.isSpace() && acc.Count() > 0 && acc.Last().isSpace())) {
-            //             acc.Add(val);
-            //         }
-            //         return acc;
-            //     } 
-            // );
-            // foreach (Token tok in tokens) {
-            //      Console.Write(tok.Type + " " + tok.Value + "\n");
-            // }
-            AST ast = new Parser(tokens).Parse();
-            Console.WriteLine(new SExprVisitor().Visit(ast));
+            AST ast = new Parser(
+                Lexer.Tokenize(source)
+            ).Parse();
+            if (Constants.Debug) {
+                Console.WriteLine(new SExprVisitor().Visit(ast));
+            }
+            var result = new SAVisitor().Visit(ast);
+            Console.WriteLine(
+                String.Format(
+                    "[{0}]",
+                    String.Join(
+                        ", ",
+                        result.PossibleValues()
+                    )
+                )
+            );
             return 0;
         }
     }
