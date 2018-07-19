@@ -4,8 +4,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using System.Linq;
-// using Antlr4.Runtime;
-
 
 namespace test_task
 {
@@ -57,6 +55,7 @@ namespace test_task
 
     public abstract class IVisitor<T>
     {
+        // no need to visit node twice, thus no problem with this debug thing enabled
         private HashSet<TreeNode> Visited { get; set; }
 
         public T Visit(AST ast)
@@ -142,7 +141,6 @@ namespace test_task
 
         public override String DeclarationVisitor(AST ast)
         {
-            Console.WriteLine("{0}", (ast.Children[0].Node ?? new TreeNode("OLOLO", NodeType.Block)).Value);
             return String.Format(
                 "(set {0})",
                 string.Join(" ", ast.Children.Select(a => this.Visit(a)))
@@ -181,12 +179,125 @@ namespace test_task
             return String.Format("(sink {0})", this.Visit(ast.Children.Last()));
         }
 
+    }
+
+    public class State
+    {
+        State()
+        {
+            TreeNode node = null;
+            String Info = "";
+            Dictionary<int, HashSet<Int>> Positive = new Dictionary<int, HashSet<Int>>();
+            Dictionary<int, HashSet<Int>> Negative = new Dictionary<int, HashSet<Int>>();
+        }  
+
+        private Dictionary<int, HashSet<Int>> Positive { get; set; }
+        private Dictionary<int, HashSet<Int>> Negative { get; set; }
+        public TreeNode Node { get; set; }
+        public String Info { get; set; }
+
+        public void AddVar(int var)
+        {
+            Positive.Add(var, new HashSet<Int>());
+        }
+
+        public void AddConstraint(int var, Int constraint)
+        {
+            Positive[var].Add(constraint);
+        }
+
+        public void Update(State new)
+        {
+            foreach(var k in other.Positive.Keys) {
+                if (!Positive.ContainsKey(k)) {
+                    AddVar(k);
+                    Positive[var].UnionWith((k, other.Positive[k]));
+
+                }
+                else {
+                    foreach(var pk in Positive.Keys) {
+                        if (!Negative.ContainsKey(pk) && pk != k) {
+                            Negative.Add(pk, other.Positive[k])
+                        }
+                    }
+                    // Positive[k].
+                }
+                // AddConstraint(k, other[k]);
+            }
+        }
+
+        // public static State Join(IEnumerable<State> states)
+        // {
+
+        // }
+
+
+    }
+
+    public class SAVisitor : IVisitor<State>
+    {
+        // SAVisitor()
+        // {
+        //     State St = new St();
+        // }
+
+        // private State St { get; set; }
+
+        public override State BlockVisitor(AST ast)
+        {
+            State st = new St();
+            foreach(State a in ast.Children.Select(a => this.Visit(a))) {
+                St.Update(a);
+            }
+            return St;
+        }
+
+        public override State IfVisitor(AST ast)
+        {
+            State constraint = Convert.ToInt32(Visit(ast.Children[0]).Info);
+            Visit(ast.Children[1]);
+        }
+
+        // don't need this
+        public override State DeclarationVisitor(AST ast)
+        {
+            return null;
+        }
+
+        public override State AssigmentVisitor(AST ast)
+        {
+            State st = Visit(ast.Children[1]);
+            st.node = TreeNode("", NodeType.Assigment);
+            return st;
+        }
+
+        public override State LookupVisitor(AST ast)
+        {
+            return Visit(ast.Children[1])
+        }
+
+        public override State VarNameVisitor(AST ast)
+        {
+            return ast.Node.Value;
+        }
+
+        public override State NumberVisitor(AST ast)
+        {
+            State st = new State();
+            st.Info = ast.Node.Value;
+            return st;
+        }
+
+        public override State SinkVisitor(AST ast)
+        {
+            return State.Format("(sink {0})", this.Visit(ast.Children.Last()));
+        }
 
     }
 
     public class Token
     {
-        public Token(string value, TokenType token) {
+        public Token(String value, TokenType token) {
             Type = token;
             Value = value;
         }
