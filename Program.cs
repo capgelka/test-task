@@ -183,41 +183,41 @@ namespace test_task
 
     public class State
     {
-        State()
+        public State()
         {
-            TreeNode node = null;
+            TreeNode Node = null;
             String Info = "";
-            Dictionary<int, HashSet<Int>> Positive = new Dictionary<int, HashSet<Int>>();
-            Dictionary<int, HashSet<Int>> Negative = new Dictionary<int, HashSet<Int>>();
+            Dictionary<int, HashSet<int>> Positive = new Dictionary<int, HashSet<int>>();
+            Dictionary<int, HashSet<int>> Negative = new Dictionary<int, HashSet<int>>();
         }  
 
-        private Dictionary<int, HashSet<Int>> Positive { get; set; }
-        private Dictionary<int, HashSet<Int>> Negative { get; set; }
+        private Dictionary<int, HashSet<int>> Positive { get; set; }
+        private Dictionary<int, HashSet<int>> Negative { get; set; }
         public TreeNode Node { get; set; }
         public String Info { get; set; }
 
         public void AddVar(int var)
         {
-            Positive.Add(var, new HashSet<Int>());
+            Positive.Add(var, new HashSet<int>());
         }
 
-        public void AddConstraint(int var, Int constraint)
+        public void AddConstraint(int var, int constraint)
         {
             Positive[var].Add(constraint);
         }
 
-        public void Update(State new)
+        public void Update(State other)
         {
             foreach(var k in other.Positive.Keys) {
                 if (!Positive.ContainsKey(k)) {
                     AddVar(k);
-                    Positive[var].UnionWith((k, other.Positive[k]));
+                    Positive[k].UnionWith(other.Positive[k]);
 
                 }
                 else {
                     foreach(var pk in Positive.Keys) {
                         if (!Negative.ContainsKey(pk) && pk != k) {
-                            Negative.Add(pk, other.Positive[k])
+                            Negative.Add(pk, other.Positive[k]);
                         }
                     }
                     // Positive[k].
@@ -245,17 +245,18 @@ namespace test_task
 
         public override State BlockVisitor(AST ast)
         {
-            State st = new St();
+            State st = new State();
             foreach(State a in ast.Children.Select(a => this.Visit(a))) {
-                St.Update(a);
+                st.Update(a);
             }
-            return St;
+            return st;
         }
 
         public override State IfVisitor(AST ast)
         {
-            State constraint = Convert.ToInt32(Visit(ast.Children[0]).Info);
+            int constraint = Convert.ToInt32(Visit(ast.Children[0]).Info);
             Visit(ast.Children[1]);
+            return new State();
         }
 
         // don't need this
@@ -267,18 +268,20 @@ namespace test_task
         public override State AssigmentVisitor(AST ast)
         {
             State st = Visit(ast.Children[1]);
-            st.node = TreeNode("", NodeType.Assigment);
+            st.Node = new TreeNode("", NodeType.Assigment);
             return st;
         }
 
         public override State LookupVisitor(AST ast)
         {
-            return Visit(ast.Children[1])
+            return Visit(ast.Children[1]);
         }
 
         public override State VarNameVisitor(AST ast)
         {
-            return ast.Node.Value;
+            State st = new State();
+            st.Info = ast.Node.Value;
+            return st;
         }
 
         public override State NumberVisitor(AST ast)
@@ -290,7 +293,7 @@ namespace test_task
 
         public override State SinkVisitor(AST ast)
         {
-            return State.Format("(sink {0})", this.Visit(ast.Children.Last()));
+            return new State();
         }
 
     }
