@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Collections;
 using System.Collections.Generic;
@@ -194,13 +194,16 @@ namespace test_task
         public State()
         {
             Info = "";
+            Vars = new Dictionary<String, CspTerm>();
             Data = new Dictionary<int, ConstraintSystem>();
+            Cs = ConstraintSystem.CreateSolver();
         }  
 
         private Dictionary<int, ConstraintSystem> Data { get; set; }
-        // private Dictionary<int, HashSet<int>> Negative { get; set; }
-        public TreeNode Node { get; set; }
+        private Dictionary<String, CspTerm> Vars { get; set; }
+
         public String Info { get; set; }
+        private ConstraintSystem Cs { get; }
 
         public void AddVar(int value)
         {
@@ -209,6 +212,9 @@ namespace test_task
 
         public State Update(State other)
         {
+            foreach (var k in other.Vars.Keys){
+                Vars.Add(k, other.Vars[k]);
+            }
             foreach(var k in other.Data.Keys) {
                 if (!Data.ContainsKey(k)) {
                     this.AddVar(k);
@@ -236,17 +242,42 @@ namespace test_task
             return this;
         }
 
-        public State UpdateOnConstraint(int constrint, State other)
+        public State UpdateOnConstraint(String cName, State other)
         {
-            return this;
+            if (!Vars.ContainsKey(cName)) {
+                Vars.Add(cName, Cs.CreateBoolean(cName));
+            }
+
+            foreach (var k in other.Data.Keys) {
+                other.Data[k].AddConstraints(Vars[cName]);
+            }
+
+            Console.WriteLine("==");
+            foreach (var val in Vars.Keys) {
+                Console.WriteLine(val);
+             }
+
+            return this.Update(other);
         }
 
         public List<int> PossibleValues()
         {
             var buff = new List<int>();
             foreach (var k in Data.Keys) {
-                Console.WriteLine(Data[k]);
-                if (Data[k].Solve().HasFoundSolution) {
+                Console.WriteLine(Data[k].Constraints);
+                var solution = Data[k].Solve();
+                if (solution.HasFoundSolution) {
+
+                    foreach (var val in Vars.Keys) {
+                        Console.WriteLine("=_=");
+                        //Console.WriteLine(solution[key]);
+                    }
+
+                    foreach (var val in Vars.Values) {
+                        Console.WriteLine("!!!");
+                        Console.WriteLine(solution[val]);
+                    }
+
                     buff.Add(k);
                 }
             }
@@ -259,10 +290,10 @@ namespace test_task
     {
         // SAVisitor()
         // {
-        //     State St = new St();
+        //     Conditions = new HashSet<String>();
         // }
 
-        // private State St { get; set; }
+        // private HashSet<String> Conditions { get; set; }
 
         public override State BlockVisitor(AST ast)
         {
@@ -282,7 +313,7 @@ namespace test_task
         public override State IfVisitor(AST ast)
         {
             return new State().UpdateOnConstraint(
-                Convert.ToInt32(Visit(ast.Children[0]).Info),
+                Visit(ast.Children[0]).Info,
                 Visit(ast.Children[1])
             );
         }
@@ -302,7 +333,10 @@ namespace test_task
 
         public override State LookupVisitor(AST ast)
         {
-            return Visit(ast.Children[1]);
+            var st = Visit(ast.Children[1]);
+
+            // Conditions.Add(st.Info);
+            return st;
         }
 
         public override State VarNameVisitor(AST ast)
@@ -742,16 +776,8 @@ namespace test_task
                 System.Console.WriteLine("You need to specify source file");
                 return 1;
             }
-
             try
-            {   // Open the text file using a stream reader.
-                // using (StreamReader sr = new StreamReader(args[0]))
-                // {
-                // // Read the stream to a string, and write the string to the console.
-                //     String line = sr.ReadToEnd();
-                //     Console.WriteLine(line);
-                // }
-                // sr = new StreamReader(args[0]);
+            {
                 source = System.IO.File.ReadAllText(args[0]);
             }
             catch (Exception e)
