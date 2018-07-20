@@ -7,7 +7,9 @@ using System.Linq;
 
 using System.Threading.Tasks;
 
-using Microsoft.SolverFoundation.Solvers;
+using Decider.Csp.BaseTypes;
+using Decider.Csp.Integer;
+using Decider.Csp.Global;
 
 
 static class Constants
@@ -16,7 +18,89 @@ static class Constants
 }
 
 namespace test_task
-{
+{   
+
+
+    public class SATSolver
+    {
+
+        public SATSolver()
+        {
+            Constraints = new HashSet<ExpressionInteger>();
+            Vars = new HashSet<VariableInteger>();
+        }
+
+        public HashSet<ExpressionInteger> Constraints { get; private set;}
+        public HashSet<VariableInteger> Vars { get; }
+
+        public VariableInteger AddVariable(String name)
+        {
+            var vi = new VariableInteger(name, 0, 1);
+            Console.WriteLine("Create variable {0} {1}", vi, vi.Name);
+            Vars.Add(vi);
+            return vi;
+        }
+
+        public ExpressionInteger And(ExpressionInteger a, ExpressionInteger b)
+        {
+            return a & b;
+        }
+
+        public ExpressionInteger Or(ExpressionInteger a, ExpressionInteger b)
+        {
+            return a | b;
+        }
+
+        public ExpressionInteger Not(ExpressionInteger a)
+        {
+            return !a;
+        }
+
+        public void AddConstraint(ExpressionInteger constr)
+        {
+            Console.WriteLine("Add constraint {0}", constr);
+            Constraints.Add(constr);
+        }
+
+        public bool Solve()
+        {
+            return _Solve(Vars, Constraints);
+        }
+
+        public bool Solve(IEnumerable<ExpressionInteger> cl)
+        {
+            return _Solve(Vars, cl);
+        }
+
+        public bool Solve(IEnumerable<VariableInteger> vars, IEnumerable<ExpressionInteger> cl)
+        {
+            return _Solve(vars, cl);
+        }
+
+        private bool _Solve(IEnumerable<VariableInteger> vars, IEnumerable<ExpressionInteger> cl)
+        {
+            var constraints = cl.Select(e => new ConstraintInteger(e == 1));
+
+            StateOperationResult searchResult;
+
+            IState<int> state = new StateInteger(vars, constraints);
+            state.StartSearch(out searchResult);
+            if (searchResult == StateOperationResult.Solved) {
+                foreach (var v in vars) {
+                    Console.WriteLine("{0} {1}", v.Name, v);
+                }
+            }
+            return (searchResult == StateOperationResult.Solved);
+
+        }
+
+        public void RemoveConstraints()
+        {
+            Constraints = new HashSet<ExpressionInteger>();
+        }
+
+    }
+
     public enum TokenType
     {
         LBracket,
@@ -191,84 +275,90 @@ namespace test_task
 
     }
 
-    // public class Solver
-    // {
-    //     public Solver()
-    //     {
-    //         Commands = "";
-    //     }
-
-    //     public AddConstraints(String )
-
-    //     public static Solver CreateSolver()
-    //     {
-    //         return new Solver();
-    //     }
-
-    // }
-
 
     public class State
     {
         public State()
         {
             Info = "";
-            Vars = new Dictionary<String, CspTerm>();
-            Data = new Dictionary<int, HashSet<CspTerm>>();
-            PathConstraints = new HashSet<CspTerm>();
+            Vars = new Dictionary<String, VariableInteger>();
+            Data = new Dictionary<int, HashSet<ExpressionInteger>>();
+            PathConstraints = new HashSet<ExpressionInteger>();
 
-            Cs = ConstraintSystem.CreateSolver();
+            Solver = new SATSolver();
         }  
 
-        private Dictionary<int, HashSet<CspTerm>> Data { get; set; }
-        private Dictionary<String, CspTerm> Vars { get; set; }
+        private Dictionary<int, HashSet<ExpressionInteger>> Data { get; set; }
+        private Dictionary<String, VariableInteger> Vars { get; set; }
 
         public String Info { get; set; }
-        private ConstraintSystem Cs { get; }
-        private HashSet<CspTerm> PathConstraints { get; }
+        private SATSolver Solver { get; }
+        private HashSet<ExpressionInteger> PathConstraints { get; }
 
         public void AddVar(int value)
         {
-            Data.Add(value, new HashSet<CspTerm> {Cs.True});
+            Data.Add(value, new HashSet<ExpressionInteger>());
             foreach (var cons in PathConstraints) {
                 Data[value].Add(cons);
             }
         }
 
+        public void Show()
+        {
+            Console.WriteLine(
+                "Vars: {0}",
+                String.Join(" ", Vars.Values.Select(v => v.Name))
+            );
+            Console.WriteLine(
+                "Data {0}",
+                String.Join("\n",
+                    Data.Keys.Select(
+                        k => String.Format(
+                            "{k} {0}",
+                            Data[k].Select(
+                                e => String.Format("{0}", e)
+                            )
+                        )
+                    )
+                )
+            );
+            Console.WriteLine("PathConstraints:");
+        }
+
         public State Update(State other)
         {
-            // foreach (var k in other.Vars.Keys){
-            //     Vars.Add(k, other.Vars[k]);
-            // }
-            // foreach(var k in other.Data.Keys) {
-            //     if (!Data.ContainsKey(k)) {
-            //         this.AddVar(k);
-            //         foreach(var c in other.Data[k]) {
-            //             Data[k].Add(c);
-            //         }
-            //     }
-            //     else {
-            //         // CspTerm tmp = Cs.True;
-            //         // foreach(var c in other.Data[k]) {
-            //         //     tmp = Cs.And(tmp, c);
-            //         // }
-            //         ;
-            //         Data[k].Add(
-            //             other.Data[k].Aggregate(
-            //                 Cs.True,
-            //                 (acc, el) => Cs.And(acc, el)
-            //             )
-            //         );
+            foreach (var k in other.Vars.Keys){
+                Vars.Add(k, other.Vars[k]);
+            }
+            foreach(var k in other.Data.Keys) {
+                if (!Data.ContainsKey(k)) {
+                    this.AddVar(k);
+                    foreach(var c in other.Data[k]) {
+                        Data[k].Add(c);
+                    }
+                }
+                else {
+                    // CspTerm tmp = Solver.True;
+                    // foreach(var c in other.Data[k]) {
+                    //     tmp = Solver.And(tmp, c);
+                    // }
+                    ;
+                    Data[k].Add(
+                        other.Data[k].Aggregate(
+                            (acc, el) => Solver.And(acc, el)
+                        )
+                    );
 
-            //     }
-            // }
+                }
+            }
+            //Show();
             return this;
         }
 
         public State UpdateOnConstraint(String cName)
         {
             if (!Vars.ContainsKey(cName)) {
-                Vars.Add(cName, Cs.CreateBoolean(cName));
+                Vars.Add(cName, Solver.AddVariable(cName));
             }
 
             foreach (var k in Data.Keys) {
@@ -298,40 +388,42 @@ namespace test_task
                 // }
                 Console.WriteLine("Solving for {0}", k);
                 foreach (var cons in Data[k]) {
-                    Console.WriteLine(Cs.AddConstraints(cons));
+                    //Solver.AddConstraint(cons);
                     Console.WriteLine(cons);
                 }
 
-                foreach (var x in Cs.Constraints) {
-                    Console.WriteLine(x);
+
+                foreach (var x in Solver.Vars) {
+                    Console.WriteLine("---");
+                    Console.WriteLine(x.Name);
                 }
 
-                // var task = Task<ConstraintSolverSolution>.Factory.StartNew(() => Cs.Solve());
+
+                // var task = Task<ConstraintSolverSolution>.Factory.StartNew(() => Solver.Solve());
                 // task.Wait();
                 // var solution = task.Result;
-                var solution = Cs.Solve();
-                if (solution.HasFoundSolution) {
+                if (Solver.Solve(Data[k])) {
 
                     // foreach (var val in Vars.Keys) {
                     //     Console.WriteLine("=_=");
                     //     //Console.WriteLine(solution[key]);
                     // }
 
-                    foreach (var condKey in Vars.Keys) {
-                        Console.WriteLine("!!!");
-                        Console.WriteLine("condition[{0}]: {1}", condKey, Vars[condKey]);
-                        try {
-                            Console.WriteLine(solution[Vars[condKey]]);
-                        }
+                    // foreach (var condKey in Vars.Keys) {
+                    //     Console.WriteLine("!!!");
+                    //     Console.WriteLine("condition[{0}]: {1}", condKey, Vars[condKey]);
+                    //     try {
+                    //         Console.WriteLine(solution[Vars[condKey]]);
+                    //     }
 
-                        catch {
-                            Console.WriteLine("(");
-                        }
-                    }
+                    //     catch {
+                    //         Console.WriteLine("(");
+                    //     }
+                    // }
 
                     buff.Add(k);
                 }
-                Cs.RemoveConstraints();
+                // Solver.RemoveConstraints();
             }
             return buff;
         }
@@ -863,12 +955,49 @@ namespace test_task
             );
 
 
+            var s = new SATSolver();
+            var a = s.AddVariable("a");
+            var b = s.AddVariable("b");
+            var c = s.AddVariable("c");
+            var d = s.AddVariable("d");
+
+            s.AddConstraint(a);
+            s.AddConstraint(s.And(b, c));
+            s.AddConstraint(s.Or(s.Not(a), c));
+
+            Console.WriteLine(s.Solve());
+
+            // var clauses = new List<List<string>> {
+            //     new List<string> { "A", "-b", "c" },
+            //     new List<string> { "A", "-b", "c"},
+            //     new List<string> { "b", "-A" , "-c"},
+            //     new List<string> { "c", "-A", "b"},
+            // };
+
+            // var solver = new DefaultSolver(clauses);
+
+            // if (solver.Solve())
+            // {
+            //     Console.WriteLine("Satisfiable.");
+
+            //     // Retrieve an interpretation that satisfies the boolean formula.
+            //     var interpretation = solver.Model;
+            //     foreach (var k in interpretation.Keys) {
+            //         Console.WriteLine("{0} {1}", k, interpretation[k]);
+            //     }
+            //     Console.WriteLine(interpretation);
+            // }
+            // else
+            // {
+            //     Console.WriteLine("Not Satisfiable.");
+            // }
+
             // ConstraintSystem s1 = ConstraintSystem.CreateSolver();
 
-            // CspTerm t1 = s1.CreateBoolean("v1");
-            // CspTerm t2 = s1.CreateBoolean("v2");
-            // CspTerm t3 = s1.CreateBoolean("v3");
-            // CspTerm t4 = s1.CreateBoolean("v4");
+            // CspTerm t1 = s1.AddVariable("v1");
+            // CspTerm t2 = s1.AddVariable("v2");
+            // CspTerm t3 = s1.AddVariable("v3");
+            // CspTerm t4 = s1.AddVariable("v4");
 
             // CspTerm tOr12 = s1.Or(s1.Not(t1), s1.Not(t2));
             // CspTerm tOr13 = s1.Or(s1.Not(t1), s1.Not(t3));
@@ -881,14 +1010,14 @@ namespace test_task
 
             // CspTerm tOr = s1.Or(t1, t2, t3, t4);
 
-            // // s1.AddConstraints(tOr12);
-            // // s1.AddConstraints(tOr13);
-            // // s1.AddConstraints(tOr14);
-            // // s1.AddConstraints(tOr23);
-            // // s1.AddConstraints(tOr24);
-            // // s1.AddConstraints(tOr34);
-            // // s1.AddConstraints(tOr);
-            // s1.AddConstraints(s1.True);
+            // // s1.AddConstraint(tOr12);
+            // // s1.AddConstraint(tOr13);
+            // // s1.AddConstraint(tOr14);
+            // // s1.AddConstraint(tOr23);
+            // // s1.AddConstraint(tOr24);
+            // // s1.AddConstraint(tOr34);
+            // // s1.AddConstraint(tOr);
+            // s1.AddConstraint(s1.True);
 
             // foreach (var x in s1.Constraints) {
             //     Console.WriteLine(x);
@@ -903,13 +1032,13 @@ namespace test_task
 
 
 
-            // // s2.AddConstraints(tOr12);
-            // // s2.AddConstraints(tOr13);
-            // // s2.AddConstraints(tOr14);
-            // // s2.AddConstraints(tOr23);
-            // // s2.AddConstraints(tOr24);
-            // // s2.AddConstraints(tOr34);
-            // // s2.AddConstraints(tOr);
+            // // s2.AddConstraint(tOr12);
+            // // s2.AddConstraint(tOr13);
+            // // s2.AddConstraint(tOr14);
+            // // s2.AddConstraint(tOr23);
+            // // s2.AddConstraint(tOr24);
+            // // s2.AddConstraint(tOr34);
+            // // s2.AddConstraint(tOr);
 
             // // ConstraintSolverSolution sol2 = s2.Solve();
             // // Console.WriteLine(sol2[t1]);
