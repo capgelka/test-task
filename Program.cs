@@ -191,6 +191,22 @@ namespace test_task
 
     }
 
+    // public class Solver
+    // {
+    //     public Solver()
+    //     {
+    //         Commands = "";
+    //     }
+
+    //     public AddConstraints(String )
+
+    //     public static Solver CreateSolver()
+    //     {
+    //         return new Solver();
+    //     }
+
+    // }
+
 
     public class State
     {
@@ -221,40 +237,31 @@ namespace test_task
 
         public State Update(State other)
         {
-            foreach (var k in other.Vars.Keys){
-                Vars.Add(k, other.Vars[k]);
-            }
-            foreach(var k in other.Data.Keys) {
-                if (!Data.ContainsKey(k)) {
-                    this.AddVar(k);
-                    foreach(var c in other.Data[k]) {
-                        Data[k].Add(c);
-                    }
-                }
-                else {
-                    // CspTerm tmp = Cs.True;
-                    // foreach(var c in other.Data[k]) {
-                    //     tmp = Cs.And(tmp, c);
-                    // }
-                    ;
-                    Data[k].Add(
-                        other.Data[k].Aggregate(
-                            Cs.True,
-                            (acc, el) => Cs.And(acc, el)
-                        )
-                    );
-
-                }
-            //     else {
-            //         foreach(var pk in Positive.Keys) {
-            //             if (!Negative.ContainsKey(pk) && pk != k) {
-            //                 Negative.Add(pk, other.Positive[k].MemberwiseClone());
-            //             }
+            // foreach (var k in other.Vars.Keys){
+            //     Vars.Add(k, other.Vars[k]);
+            // }
+            // foreach(var k in other.Data.Keys) {
+            //     if (!Data.ContainsKey(k)) {
+            //         this.AddVar(k);
+            //         foreach(var c in other.Data[k]) {
+            //             Data[k].Add(c);
             //         }
-                    // Positive[k].
             //     }
-            //     // AddConstraint(k, other[k]);
-            }
+            //     else {
+            //         // CspTerm tmp = Cs.True;
+            //         // foreach(var c in other.Data[k]) {
+            //         //     tmp = Cs.And(tmp, c);
+            //         // }
+            //         ;
+            //         Data[k].Add(
+            //             other.Data[k].Aggregate(
+            //                 Cs.True,
+            //                 (acc, el) => Cs.And(acc, el)
+            //             )
+            //         );
+
+            //     }
+            // }
             return this;
         }
 
@@ -280,7 +287,7 @@ namespace test_task
         public List<int> PossibleValues()
         {
             var buff = new List<int>();
-            foreach (var k in Data.Keys.Skip(1)) {
+            foreach (var k in Data.Keys) {
                 // foreach (var x in Data[k].Variables) {
                 //    Console.WriteLine("++++");
                 //    Console.WriteLine(x);
@@ -289,7 +296,7 @@ namespace test_task
                 //    Console.WriteLine("-----");
                 //    Console.WriteLine(x);
                 // }
-                Console.WriteLine(k);
+                Console.WriteLine("Solving for {0}", k);
                 foreach (var cons in Data[k]) {
                     Console.WriteLine(Cs.AddConstraints(cons));
                     Console.WriteLine(cons);
@@ -299,10 +306,10 @@ namespace test_task
                     Console.WriteLine(x);
                 }
 
-                var task = Task<ConstraintSolverSolution>.Factory.StartNew(() => Cs.Solve());
-                task.Wait();
-                var solution = task.Result;
-                //var solution = Cs.Solve();
+                // var task = Task<ConstraintSolverSolution>.Factory.StartNew(() => Cs.Solve());
+                // task.Wait();
+                // var solution = task.Result;
+                var solution = Cs.Solve();
                 if (solution.HasFoundSolution) {
 
                     // foreach (var val in Vars.Keys) {
@@ -310,11 +317,11 @@ namespace test_task
                     //     //Console.WriteLine(solution[key]);
                     // }
 
-                    foreach (var val in Vars.Values) {
+                    foreach (var condKey in Vars.Keys) {
                         Console.WriteLine("!!!");
-                        Console.WriteLine(val);
+                        Console.WriteLine("condition[{0}]: {1}", condKey, Vars[condKey]);
                         try {
-                            Console.WriteLine(solution[val]);
+                            Console.WriteLine(solution[Vars[condKey]]);
                         }
 
                         catch {
@@ -351,6 +358,7 @@ namespace test_task
                     st.Update(s);
                 }
                 else {
+                    Console.WriteLine("Add {0}", s.Info);
                     st.AddVar(Convert.ToInt32(s.Info));
                 }
             }
