@@ -5,6 +5,8 @@ using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using System.Linq;
 
+using System.Threading.Tasks;
+
 using Microsoft.SolverFoundation.Solvers;
 
 
@@ -189,25 +191,32 @@ namespace test_task
 
     }
 
+
     public class State
     {
         public State()
         {
             Info = "";
             Vars = new Dictionary<String, CspTerm>();
-            Data = new Dictionary<int, ConstraintSystem>();
+            Data = new Dictionary<int, HashSet<CspTerm>>();
+            PathConstraints = new HashSet<CspTerm>();
+
             Cs = ConstraintSystem.CreateSolver();
         }  
 
-        private Dictionary<int, ConstraintSystem> Data { get; set; }
+        private Dictionary<int, HashSet<CspTerm>> Data { get; set; }
         private Dictionary<String, CspTerm> Vars { get; set; }
 
         public String Info { get; set; }
         private ConstraintSystem Cs { get; }
+        private HashSet<CspTerm> PathConstraints { get; }
 
         public void AddVar(int value)
         {
-            this.Data.Add(value, ConstraintSystem.CreateSolver());
+            Data.Add(value, new HashSet<CspTerm> {Cs.True});
+            foreach (var cons in PathConstraints) {
+                Data[value].Add(cons);
+            }
         }
 
         public State Update(State other)
@@ -218,15 +227,22 @@ namespace test_task
             foreach(var k in other.Data.Keys) {
                 if (!Data.ContainsKey(k)) {
                     this.AddVar(k);
-                    foreach(var c in other.Data[k].Constraints) {
-                        Data[k].AddConstraints(c);
+                    foreach(var c in other.Data[k]) {
+                        Data[k].Add(c);
                     }
                 }
                 else {
-                    CspTerm tmp = other.Data[k].CreateBoolean();
-                    foreach(var c in other.Data[k].Constraints) {
-                        tmp = Data[k].And(tmp, c);
-                    }
+                    // CspTerm tmp = Cs.True;
+                    // foreach(var c in other.Data[k]) {
+                    //     tmp = Cs.And(tmp, c);
+                    // }
+                    ;
+                    Data[k].Add(
+                        other.Data[k].Aggregate(
+                            Cs.True,
+                            (acc, el) => Cs.And(acc, el)
+                        )
+                    );
 
                 }
             //     else {
@@ -242,44 +258,73 @@ namespace test_task
             return this;
         }
 
-        public State UpdateOnConstraint(String cName, State other)
+        public State UpdateOnConstraint(String cName)
         {
             if (!Vars.ContainsKey(cName)) {
                 Vars.Add(cName, Cs.CreateBoolean(cName));
             }
 
-            foreach (var k in other.Data.Keys) {
-                other.Data[k].AddConstraints(Vars[cName]);
+            foreach (var k in Data.Keys) {
+                Data[k].Add(Vars[cName]);
             }
+            PathConstraints.Add(Vars[cName]);
 
-            Console.WriteLine("==");
-            foreach (var val in Vars.Keys) {
-                Console.WriteLine(val);
-             }
+            // Console.WriteLine("==");
+            // foreach (var val in Vars.Keys) {
+            //     Console.WriteLine(val);
+            //  }
 
-            return this.Update(other);
+            return this;
         }
 
         public List<int> PossibleValues()
         {
             var buff = new List<int>();
-            foreach (var k in Data.Keys) {
-                Console.WriteLine(Data[k].Constraints);
-                var solution = Data[k].Solve();
+            foreach (var k in Data.Keys.Skip(1)) {
+                // foreach (var x in Data[k].Variables) {
+                //    Console.WriteLine("++++");
+                //    Console.WriteLine(x);
+                // }
+                // foreach (var x in Data[k].Constraints) {
+                //    Console.WriteLine("-----");
+                //    Console.WriteLine(x);
+                // }
+                Console.WriteLine(k);
+                foreach (var cons in Data[k]) {
+                    Console.WriteLine(Cs.AddConstraints(cons));
+                    Console.WriteLine(cons);
+                }
+
+                foreach (var x in Cs.Constraints) {
+                    Console.WriteLine(x);
+                }
+
+                var task = Task<ConstraintSolverSolution>.Factory.StartNew(() => Cs.Solve());
+                task.Wait();
+                var solution = task.Result;
+                //var solution = Cs.Solve();
                 if (solution.HasFoundSolution) {
 
-                    foreach (var val in Vars.Keys) {
-                        Console.WriteLine("=_=");
-                        //Console.WriteLine(solution[key]);
-                    }
+                    // foreach (var val in Vars.Keys) {
+                    //     Console.WriteLine("=_=");
+                    //     //Console.WriteLine(solution[key]);
+                    // }
 
                     foreach (var val in Vars.Values) {
                         Console.WriteLine("!!!");
-                        Console.WriteLine(solution[val]);
+                        Console.WriteLine(val);
+                        try {
+                            Console.WriteLine(solution[val]);
+                        }
+
+                        catch {
+                            Console.WriteLine("(");
+                        }
                     }
 
                     buff.Add(k);
                 }
+                Cs.RemoveConstraints();
             }
             return buff;
         }
@@ -299,12 +344,14 @@ namespace test_task
         {
             State st = new State();
             foreach(State s in ast.Children.Select(c => this.Visit(c))) {
-                if (s.Info == "") {
+                if (s == null) {
+                    ;
+                }
+                else if (s.Info == "") {
                     st.Update(s);
                 }
                 else {
-                    var xval = Convert.ToInt32(s.Info);
-                    st.AddVar(xval);
+                    st.AddVar(Convert.ToInt32(s.Info));
                 }
             }
             return st;
@@ -312,16 +359,19 @@ namespace test_task
 
         public override State IfVisitor(AST ast)
         {
-            return new State().UpdateOnConstraint(
-                Visit(ast.Children[0]).Info,
-                Visit(ast.Children[1])
+            return Visit(ast.Children[1]).UpdateOnConstraint(
+                Visit(ast.Children[0]).Info
             );
+            // return new State().UpdateOnConstraint(
+            //     ,
+            //     Visit(ast.Children[1])
+            // );
         }
 
         // don't need this
         public override State DeclarationVisitor(AST ast)
         {
-            return new State();
+            return null;
         }
 
         public override State AssigmentVisitor(AST ast)
@@ -803,6 +853,63 @@ namespace test_task
                     )
                 )
             );
+
+
+            // ConstraintSystem s1 = ConstraintSystem.CreateSolver();
+
+            // CspTerm t1 = s1.CreateBoolean("v1");
+            // CspTerm t2 = s1.CreateBoolean("v2");
+            // CspTerm t3 = s1.CreateBoolean("v3");
+            // CspTerm t4 = s1.CreateBoolean("v4");
+
+            // CspTerm tOr12 = s1.Or(s1.Not(t1), s1.Not(t2));
+            // CspTerm tOr13 = s1.Or(s1.Not(t1), s1.Not(t3));
+            // CspTerm tOr14 = s1.Or(s1.Not(t1), s1.Not(t4));
+
+            // CspTerm tOr23 = s1.Or(s1.Not(t2), s1.Not(t3));
+            // CspTerm tOr24 = s1.Or(s1.Not(t2), s1.Not(t4));
+
+            // CspTerm tOr34 = s1.Or(s1.Not(t3), s1.Not(t4));
+
+            // CspTerm tOr = s1.Or(t1, t2, t3, t4);
+
+            // // s1.AddConstraints(tOr12);
+            // // s1.AddConstraints(tOr13);
+            // // s1.AddConstraints(tOr14);
+            // // s1.AddConstraints(tOr23);
+            // // s1.AddConstraints(tOr24);
+            // // s1.AddConstraints(tOr34);
+            // // s1.AddConstraints(tOr);
+            // s1.AddConstraints(s1.True);
+
+            // foreach (var x in s1.Constraints) {
+            //     Console.WriteLine(x);
+            // }
+            // Console.WriteLine(t1);
+
+            // ConstraintSolverSolution solution1 = s1.Solve();
+            // Console.WriteLine(solution1[t1]);
+            // Console.WriteLine(solution1[t2]);
+            // Console.WriteLine(solution1[t3]);
+            // Console.WriteLine(solution1[t4]);
+
+
+
+            // // s2.AddConstraints(tOr12);
+            // // s2.AddConstraints(tOr13);
+            // // s2.AddConstraints(tOr14);
+            // // s2.AddConstraints(tOr23);
+            // // s2.AddConstraints(tOr24);
+            // // s2.AddConstraints(tOr34);
+            // // s2.AddConstraints(tOr);
+
+            // // ConstraintSolverSolution sol2 = s2.Solve();
+            // // Console.WriteLine(sol2[t1]);
+            // // Console.WriteLine(sol2[t2]);
+            // // Console.WriteLine(sol2[t3]);
+            // // Console.WriteLine(sol2[t4]);
+
+
             return 0;
         }
     }
