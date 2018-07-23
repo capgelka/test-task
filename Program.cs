@@ -17,9 +17,18 @@ static class Constants
     public const bool Debug = false;
 }
 
+
+
 namespace test_task
 {   
 
+    // public class ClonableVar : VariableInteger
+    // {
+    //     public ClonableVar Clone ()
+    //     {
+    //         return this.MemberberwiseClone();
+    //     }
+    // }
 
     public class SATSolver
     {
@@ -27,19 +36,28 @@ namespace test_task
         public SATSolver()
         {
             Constraints = new HashSet<ExpressionInteger>();
-            Vars = new HashSet<VariableInteger>();
+            Vars = new Dictionary<String, VariableInteger>();
         }
 
         public HashSet<ExpressionInteger> Constraints { get; private set;}
-        public HashSet<VariableInteger> Vars { get; }
+        public Dictionary<String, VariableInteger> Vars { get; }
 
         public VariableInteger AddVariable(String name)
         {
+            if (Vars.ContainsKey(name)) {
+                return Vars[name];
+            }
             var vi = new VariableInteger(name, 0, 1);
-            Console.WriteLine("Create variable {0} {1}", vi, vi.Name);
-            Vars.Add(vi);
+            // Console.WriteLine("Create variable {0} {1}", vi, vi.Name);
+            Vars.Add(name, vi);
             return vi;
         }
+
+        public VariableInteger CreateVariable(String name)
+        {
+            return new VariableInteger(name, 0, 1);
+        }
+
 
         public ExpressionInteger And(ExpressionInteger a, ExpressionInteger b)
         {
@@ -64,12 +82,12 @@ namespace test_task
 
         public bool Solve()
         {
-            return _Solve(Vars, Constraints);
+            return _Solve(Vars.Values, Constraints);
         }
 
         public bool Solve(IEnumerable<ExpressionInteger> cl)
         {
-            return _Solve(Vars, cl);
+            return _Solve(Vars.Values, cl);
         }
 
         public bool Solve(IEnumerable<VariableInteger> vars, IEnumerable<ExpressionInteger> cl)
@@ -221,7 +239,7 @@ namespace test_task
         {
             return String.Format(
                 "(\n\t{0})",
-                string.Join("\n", ast.Children.Select(a => this.Visit(a)))
+                string.Join("\n", ast.Children.Select(Visit))
             );
         }
 
@@ -230,7 +248,7 @@ namespace test_task
             return String.Format(
                 "(if ({0}) {1})",
                 this.Visit(ast.Children[0]),
-                string.Join("\n", ast.Children.Skip(1).Select(a => this.Visit(a)))
+                string.Join("\n", ast.Children.Skip(1).Select(Visit))
             );
         }
 
@@ -238,7 +256,7 @@ namespace test_task
         {
             return String.Format(
                 "(set {0})",
-                string.Join(" ", ast.Children.Select(a => this.Visit(a)))
+                string.Join(" ", ast.Children.Select(Visit))
             );
         }
 
@@ -246,7 +264,7 @@ namespace test_task
         {
             return String.Format(
                 "(= {0})",
-                string.Join(" ", ast.Children.Select(a => this.Visit(a)))
+                string.Join(" ", ast.Children.Select(Visit))
             );
         }
 
@@ -276,6 +294,70 @@ namespace test_task
 
     }
 
+    // it's much better to create a new tree but nothing bad 
+    // to modify the original in this case, which is much easier
+    public class SimplificationVisior : IVisitor<AST>
+    {
+
+        public override AST BlockVisitor(AST ast)
+        {
+            var children = new List<AST>();
+            bool assigmentExist = false;
+            ast.Children.Reverse();
+            foreach (var child in ast.Children) {
+                if (assigmentExist) {
+                    break;
+                }
+
+                if (child.Node.Type == NodeType.Assigment) {
+                    assigmentExist = true;
+                }
+                children.Add(Visit(child));
+            }
+            children.Reverse();
+            ast.Children = children;
+            return ast;
+        }
+
+        public override AST IfVisitor(AST ast)
+        {
+            foreach (var v in ast.Children) {
+                Visit(v);
+            }
+            return ast;
+        }
+
+        public override AST DeclarationVisitor(AST ast)
+        {
+            return ast;
+        }
+
+        public override AST AssigmentVisitor(AST ast)
+        {
+            return ast;
+        }
+
+        public override AST LookupVisitor(AST ast)
+        {
+            return ast;
+        }
+
+        public override AST VarNameVisitor(AST ast)
+        {
+            return ast;
+        }
+
+        public override AST NumberVisitor(AST ast)
+        {
+            return ast;
+        }
+
+        public override AST SinkVisitor(AST ast)
+        {
+            return ast;
+        }
+
+    }
 
     public class State
     {
@@ -293,43 +375,53 @@ namespace test_task
         private Dictionary<String, VariableInteger> Vars { get; set; }
 
         public String Info { get; set; }
-        private SATSolver Solver { get; }
-        private HashSet<ExpressionInteger> PathConstraints { get; }
+        public SATSolver Solver = new SATSolver();
+        public HashSet<ExpressionInteger> PathConstraints { get; }
 
         public void AddVar(int value)
         {
             Data.Add(value, new HashSet<ExpressionInteger>());
-            foreach (var cons in PathConstraints) {
-                Data[value].Add(cons);
+            if (PathConstraints.Count() > 0) {
+                foreach (var cons in PathConstraints) {
+                    Data[value].Add(cons);
+                }
+                // var constraint = PathConstraints.Aggregate(
+                //     (acc, el) => Solver.And(acc, el)
+                // );
+                // foreach (var k in Data.Keys.Where(x => x != value)) {
+                //     Console.WriteLine("Adding constr for x={0} {1}", value, k);
+                //     Data[k].Add(Solver.Not(constraint));
+                // }
             }
         }
 
-        public void Show()
-        {
-            Console.WriteLine(
-                "Vars: {0}",
-                String.Join(" ", Vars.Values.Select(v => v.Name))
-            );
-            Console.WriteLine(
-                "Data {0}",
-                String.Join("\n",
-                    Data.Keys.Select(
-                        k => String.Format(
-                            "{k} {0}",
-                            Data[k].Select(
-                                e => String.Format("{0}", e)
-                            )
-                        )
-                    )
-                )
-            );
-            Console.WriteLine("PathConstraints:");
-        }
+        // public void Show()
+        // {
+        //     Console.WriteLine(
+        //         "Vars: {0}",
+        //         String.Join(" ", Vars.Values.Select(v => v.Name))
+        //     );
+        //     // Console.WriteLine(
+        //     //     "Data {0}",
+        //     //     // String.Join("\n",
+        //     //         Data.Keys.Select(
+        //     //             k => String.Format(
+        //     //                 "{k} {0}",
+        //     //                 Data[k].Select(
+        //     //                     e => String.Format("{0}", e)
+        //     //                 )
+        //     //             )
+        //     //         // )
+        //     //     )
+        //     // );
+        //     Console.WriteLine("PathConstraints:");
+        //     Console.WriteLine(String.Join("\n", PathConstraints));
+        // }
 
         public State Update(State other)
         {
             foreach (var k in other.Vars.Keys){
-                Console.WriteLine("Copy var {0}", k);
+                // Console.WriteLine("Copy var {0}", k);
                 Vars.Add(k, other.Vars[k]);
             }
             foreach(var k in other.Data.Keys) {
@@ -369,7 +461,7 @@ namespace test_task
         public State UpdateOnConstraint(String cName)
         {
             if (!Vars.ContainsKey(cName)) {
-                Console.WriteLine("adding var {0}", cName);
+                // Console.WriteLine("adding var {0}", cName);
                 Vars.Add(cName, Solver.AddVariable(cName));
             }
 
@@ -389,7 +481,8 @@ namespace test_task
         public List<int> PossibleValues()
         {
             var buff = new List<int>();
-            Console.WriteLine("-------Solving condtraints-------");
+            Console.WriteLine("-------Solving constraints-------");
+            // Show();
             foreach (var k in Data.Keys) {
                 // foreach (var x in Data[k].Variables) {
                 //    Console.WriteLine("++++");
@@ -402,19 +495,24 @@ namespace test_task
                 Console.WriteLine("Solving for {0}", k);
                 foreach (var cons in Data[k]) {
                     //Solver.AddConstraint(cons);
-                    Console.WriteLine(cons);
+                    Console.WriteLine(cons.Integer);
                 }
 
 
-                foreach (var x in Vars.Values) {
-                    Console.WriteLine("---");
-                    Console.WriteLine(x.Name);
-                }
+                // foreach (var x in Vars.Values) {
+                //     Console.WriteLine("---");
+                //     Console.WriteLine(x.Name);
+                // }
 
 
                 // var task = Task<ConstraintSolverSolution>.Factory.StartNew(() => Solver.Solve());
                 // task.Wait();
                 // var solution = task.Result;
+                // var varsCopy = new List<VariableInteger>();
+                // foreach (var v in Vars.Values) {
+                //     varsCopy.Add((ClonableVar) v.Clone());
+                // }
+
                 if (Solver.Solve(Vars.Values, Data[k])) {
 
                     // foreach (var val in Vars.Keys) {
@@ -443,82 +541,169 @@ namespace test_task
 
     }
 
-    public class SAVisitor : IVisitor<State>
+    public class SAVisitor : IVisitor<String>
     {
-        // SAVisitor()
-        // {
-        //     Conditions = new HashSet<String>();
-        // }
-
-        // private HashSet<String> Conditions { get; set; }
-
-        public override State BlockVisitor(AST ast)
+        public SAVisitor()
         {
-            State st = new State();
-            foreach(State s in ast.Children.Select(c => this.Visit(c))) {
-                if (s == null) {
-                    ;
-                }
-                else if (s.Info == "") {
-                    st.Update(s);
-                }
-                else {
-                    Console.WriteLine("Add {0}", s.Info);
-                    st.AddVar(Convert.ToInt32(s.Info));
-                }
+            // CurrentState = new State();
+            PathConstraints = new Dictionary<AST, HashSet<String>>();
+            Data = new Dictionary<int, HashSet<AST>>();
+        }   
+
+        // private State CurrentState {get; set; }
+        private Dictionary<AST, HashSet<String>> PathConstraints {get; set; }
+        private Dictionary<int, HashSet<AST>> Data {get; set; }
+
+        private String VarName(String name)
+        {
+            if (name.StartsWith("!")) {
+                return name.Substring(1);
             }
-            return st;
+            return name;
         }
 
-        public override State IfVisitor(AST ast)
+        private SATSolver PrepareSolver(int value)
         {
-            return Visit(ast.Children[1]).UpdateOnConstraint(
-                Visit(ast.Children[0]).Info
+            var Solver = new SATSolver();
+            List<ExpressionInteger> buff = new List<ExpressionInteger>();
+            foreach (var key in Data[value]) {
+                var tmp = new List<ExpressionInteger>();
+                foreach (var c in PathConstraints[key]) {
+                    var expr = Solver.AddVariable(VarName(c));
+                    if (c.StartsWith("!")) {
+                        tmp.Add(
+                            Solver.Not(expr)
+                        );
+                    } else {
+                        tmp.Add(expr);
+                    }
+                }
+                if (buff.Count() > 0) {
+                    buff.Add(
+                        tmp.Aggregate(
+                            (acc, el) => Solver.And(acc, el)
+                        )
+                    );
+                }
+            }
+            Solver.AddConstraint(
+                buff.Aggregate(
+                    (acc, el) => Solver.Or(acc, el)
+                )
             );
+            return Solver;
+        }
+
+        public List<int> PossibleValues()
+        {
+            var buff = new List<int>();
+
+            Console.WriteLine("-------Solving constraints-------");
+            // Show();
+            foreach (var k in Data.Keys) {
+                var Solver = PrepareSolver(k);
+                Console.WriteLine("Solving for {0}", k);
+
+                if (Solver.Solve()) {
+                    buff.Add(k);
+                }
+            }
+            return buff;
+        }
+
+        public override String BlockVisitor(AST ast)
+        {
+            // State st = new State();
+            PathConstraints.Add(ast, new HashSet<String>());
+            // PathConstraints[ast].UnionWith(PathConstraints[ast.Parent]);
+            // PathConstraints[ast].Add(cons);
+            if (!ast.isRoot()) {
+                PathConstraints[ast].UnionWith(PathConstraints[ast.Parent]);
+            }
+            var buff = new HashSet<AST>();
+            foreach(var c in ast.Children) {
+                var constr = Visit(c.Children[0]);
+                if (c.Node.Type == NodeType.If) {
+                    if (buff.Count() > 0) {
+                        foreach(var b in buff) {
+                            PathConstraints.Add(c, new HashSet<String>());
+                            PathConstraints[b].UnionWith(PathConstraints[ast]);
+                            PathConstraints[b].Add("!" + constr);
+                        };
+                    }
+                    buff.Add(c);
+                    Visit(c);
+                }
+                else if (c.Node.Type == NodeType.Assigment) {
+                    var key = Convert.ToInt32(Visit(c));
+                    if (!Data.ContainsKey(key)) {
+                        Data.Add(key, new HashSet<AST>());
+                    }
+                    Data[key].Add(ast);
+              
+                    
+                    // PathConstraints.UnionWith(PathConstraints[ast]);
+                    // st.Update(s);
+                }
+            }
+            // ast.Show();
+            // Console.WriteLine(
+            //     "Constraints {1} {0}",
+            //     st.PathConstraints.Count(),
+            //     String.Join(" ", st.PathConstraints)
+            // );
+            return "";
+        }
+
+        public override String IfVisitor(AST ast)
+        {
+            PathConstraints[ast] = PathConstraints[ast.Parent];
+            Visit(ast.Children[1]);
+            return "";
+            // String constrName = Visit(ast.Children[0]);
+            // // var cons = State.Solver.AddVariable(constrName);
+            // PathConstraints.Add(ast, new HashSet<String>());
+            // PathConstraints[ast].UnionWith(PathConstraints[ast.Parent]);
+            // PathConstraints[ast].Add(cons);
+            // return Visit(ast.Children[1]).UpdateOnConstraint(
+            //    constrName
+            // );
+
+
             // return new State().UpdateOnConstraint(
             //     ,
             //     Visit(ast.Children[1])
             // );
         }
 
-        // don't need this
-        public override State DeclarationVisitor(AST ast)
+        public override String DeclarationVisitor(AST ast)
         {
-            return null;
+            return "";
         }
 
-        public override State AssigmentVisitor(AST ast)
+        public override String AssigmentVisitor(AST ast)
         {
-            State st = Visit(ast.Children[1]);
-            // st.Node = new TreeNode("", NodeType.Assigment);
-            return st;
+            return Visit(ast.Children[1]);
         }
 
-        public override State LookupVisitor(AST ast)
+        public override String LookupVisitor(AST ast)
         {
-            var st = Visit(ast.Children[1]);
-
-            // Conditions.Add(st.Info);
-            return st;
+            return Visit(ast.Children[1]);
         }
 
-        public override State VarNameVisitor(AST ast)
+        public override String VarNameVisitor(AST ast)
         {
-            State st = new State();
-            st.Info = ast.Node.Value;
-            return st;
+            return "";
         }
 
-        public override State NumberVisitor(AST ast)
+        public override String NumberVisitor(AST ast)
         {
-            State st = new State();
-            st.Info = ast.Node.Value;
-            return st;
+           return ast.Node.Value;
         }
 
-        public override State SinkVisitor(AST ast)
+        public override String SinkVisitor(AST ast)
         {
-            return null;
+            return "";
         }
 
     }
@@ -893,7 +1078,7 @@ namespace test_task
 
         public TreeNode Node { get; set; }
         public AST Parent { get; }
-        public List<AST> Children { get; }
+        public List<AST> Children { get; set; }
 
 
         public bool isLeaf() {
@@ -926,7 +1111,6 @@ namespace test_task
 
     }
 
-
     static class Programm
     {
         public static int Main(string[] args)
@@ -956,13 +1140,17 @@ namespace test_task
             if (Constants.Debug) {
                 Console.WriteLine(new SExprVisitor().Visit(ast));
             }
-            var result = new SAVisitor().Visit(ast);
+            ast = new SimplificationVisior().Visit(ast);
+            Console.WriteLine(new SExprVisitor().Visit(ast));
+
+            var visitor = new SAVisitor();
+            visitor.Visit(ast);
             Console.WriteLine(
                 String.Format(
                     "[{0}]",
                     String.Join(
                         ", ",
-                        result.PossibleValues()
+                        visitor.PossibleValues()
                     )
                 )
             );
@@ -973,92 +1161,18 @@ namespace test_task
             var b = s.AddVariable("b");
             var c = s.AddVariable("c");
             var d = s.AddVariable("d");
+            var d2 = s.AddVariable("d");
+            Console.WriteLine("UUUUU {0}", d == d2);
+            foreach (var v in s.Vars.Values) {
+                Console.WriteLine(v.Name);
+            }
 
             s.AddConstraint(a);
             s.AddConstraint(s.And(b, c));
             s.AddConstraint(s.Or(s.Not(a), c));
 
+            // Console.WriteLine(s.Or(s.Not(a), c).Integer);
             Console.WriteLine(s.Solve());
-
-            // var clauses = new List<List<string>> {
-            //     new List<string> { "A", "-b", "c" },
-            //     new List<string> { "A", "-b", "c"},
-            //     new List<string> { "b", "-A" , "-c"},
-            //     new List<string> { "c", "-A", "b"},
-            // };
-
-            // var solver = new DefaultSolver(clauses);
-
-            // if (solver.Solve())
-            // {
-            //     Console.WriteLine("Satisfiable.");
-
-            //     // Retrieve an interpretation that satisfies the boolean formula.
-            //     var interpretation = solver.Model;
-            //     foreach (var k in interpretation.Keys) {
-            //         Console.WriteLine("{0} {1}", k, interpretation[k]);
-            //     }
-            //     Console.WriteLine(interpretation);
-            // }
-            // else
-            // {
-            //     Console.WriteLine("Not Satisfiable.");
-            // }
-
-            // ConstraintSystem s1 = ConstraintSystem.CreateSolver();
-
-            // CspTerm t1 = s1.AddVariable("v1");
-            // CspTerm t2 = s1.AddVariable("v2");
-            // CspTerm t3 = s1.AddVariable("v3");
-            // CspTerm t4 = s1.AddVariable("v4");
-
-            // CspTerm tOr12 = s1.Or(s1.Not(t1), s1.Not(t2));
-            // CspTerm tOr13 = s1.Or(s1.Not(t1), s1.Not(t3));
-            // CspTerm tOr14 = s1.Or(s1.Not(t1), s1.Not(t4));
-
-            // CspTerm tOr23 = s1.Or(s1.Not(t2), s1.Not(t3));
-            // CspTerm tOr24 = s1.Or(s1.Not(t2), s1.Not(t4));
-
-            // CspTerm tOr34 = s1.Or(s1.Not(t3), s1.Not(t4));
-
-            // CspTerm tOr = s1.Or(t1, t2, t3, t4);
-
-            // // s1.AddConstraint(tOr12);
-            // // s1.AddConstraint(tOr13);
-            // // s1.AddConstraint(tOr14);
-            // // s1.AddConstraint(tOr23);
-            // // s1.AddConstraint(tOr24);
-            // // s1.AddConstraint(tOr34);
-            // // s1.AddConstraint(tOr);
-            // s1.AddConstraint(s1.True);
-
-            // foreach (var x in s1.Constraints) {
-            //     Console.WriteLine(x);
-            // }
-            // Console.WriteLine(t1);
-
-            // ConstraintSolverSolution solution1 = s1.Solve();
-            // Console.WriteLine(solution1[t1]);
-            // Console.WriteLine(solution1[t2]);
-            // Console.WriteLine(solution1[t3]);
-            // Console.WriteLine(solution1[t4]);
-
-
-
-            // // s2.AddConstraint(tOr12);
-            // // s2.AddConstraint(tOr13);
-            // // s2.AddConstraint(tOr14);
-            // // s2.AddConstraint(tOr23);
-            // // s2.AddConstraint(tOr24);
-            // // s2.AddConstraint(tOr34);
-            // // s2.AddConstraint(tOr);
-
-            // // ConstraintSolverSolution sol2 = s2.Solve();
-            // // Console.WriteLine(sol2[t1]);
-            // // Console.WriteLine(sol2[t2]);
-            // // Console.WriteLine(sol2[t3]);
-            // // Console.WriteLine(sol2[t4]);
-
 
             return 0;
         }
