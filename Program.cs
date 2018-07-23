@@ -7,10 +7,6 @@ using System.Linq;
 
 using Decider.Csp.BaseTypes;
 using Decider.Csp.Integer;
-// using Decider.Csp.Global;
-
-
-
 
 
 namespace test_task
@@ -29,6 +25,7 @@ namespace test_task
         {
             Constraints = new HashSet<ExpressionInteger>();
             Vars = new Dictionary<String, VariableInteger>();
+            AddVariable("__system"); // avoid failing on empty solver calls
         }
 
         public HashSet<ExpressionInteger> Constraints { get; private set;}
@@ -111,6 +108,7 @@ namespace test_task
         }
 
     }
+
 
     public enum TokenType
     {
@@ -374,7 +372,13 @@ namespace test_task
             List<ExpressionInteger> buff = new List<ExpressionInteger>();
             foreach (var key in Data[value]) {
                 var tmp = new List<ExpressionInteger>();
+                if (Config.Debug) {
+                    Console.WriteLine("working on key {0}", value);
+                }
                 foreach (var c in PathConstraints[key]) {
+                    if (Config.Debug) {
+                        Console.WriteLine("\tworking on var {0}", c);
+                    }
                     var expr = Solver.AddVariable(VarName(c));
                     if (c.StartsWith("!")) {
                         tmp.Add(
@@ -392,12 +396,7 @@ namespace test_task
                     );
                 }
             }
-            if (buff.Count() == 0) {
-                ;
-            }
-            else if (buff.Count() == 1) {
-                Solver.AddConstraint(buff[0]);
-            } else {
+            if (buff.Count() > 0) {
                 Solver.AddConstraint(
                     buff.Aggregate(
                         (acc, el) => Solver.Or(acc, el)
@@ -426,19 +425,38 @@ namespace test_task
             return buff;
         }
 
-        public override String BlockVisitor(AST ast)
+
+        private String Not(String name) 
         {
-            PathConstraints.Add(ast, new HashSet<String>());
+            if (name.StartsWith("!")) {
+                return name;
+            }
+            return "!" + name;
+        }
+
+        public override String BlockVisitor(AST ast)
+        {   
+            if (!PathConstraints.ContainsKey(ast)) {
+                PathConstraints.Add(ast, new HashSet<String>());
+            }
             if (!ast.isRoot()) {
                 PathConstraints[ast].UnionWith(PathConstraints[ast.Parent]);
             }
             var buff = new HashSet<AST>();
             foreach(var c in ast.Children) {
-                var constr = Visit(c.Children[0]);
                 if (c.Node.Type == NodeType.If) {
+                    var constr = Visit(c.Children[0]);
+                    if (!PathConstraints.ContainsKey(c)) {
+                        PathConstraints.Add(c, new HashSet<String>());
+                    }
                     if (buff.Count() > 0) {
                         foreach(var b in buff) {
-                            PathConstraints[b].Add("!" + constr);
+                            if (Config.Debug) {
+                                Console.WriteLine("NEgative const on {0} for ", constr);
+                                b.Show();
+                            }
+                            PathConstraints[b].Add(Not(constr));
+                            Visit(b);
                         };
                     }
                     buff.Add(c);
@@ -451,10 +469,14 @@ namespace test_task
                     }
                     Data[key].Add(c);
                     buff.Add(c);
-                    PathConstraints.Add(c, new HashSet<String>());
+                    if (!PathConstraints.ContainsKey(c)) {
+                        PathConstraints.Add(c, new HashSet<String>());
+                    }
+
                     PathConstraints[c].UnionWith(PathConstraints[ast]);
                 }
             }
+
             return "";
         }
 
