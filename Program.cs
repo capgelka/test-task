@@ -86,6 +86,7 @@ namespace test_task
             IState<int> state = new StateInteger(vars, constraints);
             state.StartSearch(out searchResult);
             if (searchResult == StateOperationResult.Solved) {
+                Console.WriteLine("**Solution***");
                 foreach (var v in vars) {
                     Console.WriteLine("{0} {1}", v.Name, v);
                 }
@@ -328,6 +329,7 @@ namespace test_task
         public State Update(State other)
         {
             foreach (var k in other.Vars.Keys){
+                Console.WriteLine("Copy var {0}", k);
                 Vars.Add(k, other.Vars[k]);
             }
             foreach(var k in other.Data.Keys) {
@@ -342,14 +344,23 @@ namespace test_task
                     // foreach(var c in other.Data[k]) {
                     //     tmp = Solver.And(tmp, c);
                     // }
-                    ;
-                    Data[k].Add(
-                        other.Data[k].Aggregate(
-                            (acc, el) => Solver.And(acc, el)
-                        )
+                    var current = Data[k].Aggregate(
+                        (acc, el) => Solver.And(acc, el)
                     );
-
-                }
+                    var another = other.Data[k].Aggregate(
+                        (acc, el) => Solver.And(acc, el)
+                    );
+                    Data[k] = new HashSet<ExpressionInteger> { 
+                        Solver.Or(current, another)
+                    };
+                }            
+            }
+            foreach (var k in Data.Keys.Where(x => !other.Data.ContainsKey(x))) {
+                var constraint = other.PathConstraints.Aggregate(
+                    (acc, el) => Solver.And(acc, el)
+                );
+                // Data[k] = HashSet<ExpressionInteger> { Solver.And()}
+                Data[k].Add(Solver.Not(constraint));
             }
             //Show();
             return this;
@@ -358,6 +369,7 @@ namespace test_task
         public State UpdateOnConstraint(String cName)
         {
             if (!Vars.ContainsKey(cName)) {
+                Console.WriteLine("adding var {0}", cName);
                 Vars.Add(cName, Solver.AddVariable(cName));
             }
 
@@ -377,6 +389,7 @@ namespace test_task
         public List<int> PossibleValues()
         {
             var buff = new List<int>();
+            Console.WriteLine("-------Solving condtraints-------");
             foreach (var k in Data.Keys) {
                 // foreach (var x in Data[k].Variables) {
                 //    Console.WriteLine("++++");
@@ -393,7 +406,7 @@ namespace test_task
                 }
 
 
-                foreach (var x in Solver.Vars) {
+                foreach (var x in Vars.Values) {
                     Console.WriteLine("---");
                     Console.WriteLine(x.Name);
                 }
@@ -402,7 +415,7 @@ namespace test_task
                 // var task = Task<ConstraintSolverSolution>.Factory.StartNew(() => Solver.Solve());
                 // task.Wait();
                 // var solution = task.Result;
-                if (Solver.Solve(Data[k])) {
+                if (Solver.Solve(Vars.Values, Data[k])) {
 
                     // foreach (var val in Vars.Keys) {
                     //     Console.WriteLine("=_=");
@@ -505,7 +518,7 @@ namespace test_task
 
         public override State SinkVisitor(AST ast)
         {
-            return new State();
+            return null;
         }
 
     }
