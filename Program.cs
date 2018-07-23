@@ -562,12 +562,26 @@ namespace test_task
             return name;
         }
 
+        public void Show()
+        {
+            Console.WriteLine("=== PAth Constraints:");
+            foreach (var key in PathConstraints.Keys) {
+                key.Show();
+                Console.WriteLine("Constraints for:");
+                foreach (var constr in PathConstraints[key]) {
+                    Console.WriteLine(constr);
+                }
+            }
+        }
+
         private SATSolver PrepareSolver(int value)
         {
             var Solver = new SATSolver();
             List<ExpressionInteger> buff = new List<ExpressionInteger>();
+            Console.WriteLine(Data[value]);
             foreach (var key in Data[value]) {
                 var tmp = new List<ExpressionInteger>();
+                Console.WriteLine(PathConstraints[key]);
                 foreach (var c in PathConstraints[key]) {
                     var expr = Solver.AddVariable(VarName(c));
                     if (c.StartsWith("!")) {
@@ -578,7 +592,7 @@ namespace test_task
                         tmp.Add(expr);
                     }
                 }
-                if (buff.Count() > 0) {
+                if (tmp.Count() > 0) {
                     buff.Add(
                         tmp.Aggregate(
                             (acc, el) => Solver.And(acc, el)
@@ -586,18 +600,25 @@ namespace test_task
                     );
                 }
             }
-            Solver.AddConstraint(
-                buff.Aggregate(
-                    (acc, el) => Solver.Or(acc, el)
-                )
-            );
+            if (buff.Count() == 0) {
+                ;
+            }
+            else if (buff.Count() == 1) {
+                Solver.AddConstraint(buff[0]);
+            } else {
+                Solver.AddConstraint(
+                    buff.Aggregate(
+                        (acc, el) => Solver.Or(acc, el)
+                    )
+                );
+            }
             return Solver;
         }
 
         public List<int> PossibleValues()
         {
             var buff = new List<int>();
-
+            Show();
             Console.WriteLine("-------Solving constraints-------");
             // Show();
             foreach (var k in Data.Keys) {
@@ -621,13 +642,15 @@ namespace test_task
                 PathConstraints[ast].UnionWith(PathConstraints[ast.Parent]);
             }
             var buff = new HashSet<AST>();
+            var isLeaf = true;
             foreach(var c in ast.Children) {
                 var constr = Visit(c.Children[0]);
                 if (c.Node.Type == NodeType.If) {
+                    isLeaf = false;
                     if (buff.Count() > 0) {
                         foreach(var b in buff) {
-                            PathConstraints.Add(c, new HashSet<String>());
-                            PathConstraints[b].UnionWith(PathConstraints[ast]);
+                            // PathConstraints.Add(c, new HashSet<String>());
+                            // PathConstraints[b].UnionWith(PathConstraints[ast]);
                             PathConstraints[b].Add("!" + constr);
                         };
                     }
@@ -639,7 +662,10 @@ namespace test_task
                     if (!Data.ContainsKey(key)) {
                         Data.Add(key, new HashSet<AST>());
                     }
-                    Data[key].Add(ast);
+                    Data[key].Add(c);
+                    buff.Add(c);
+                    PathConstraints.Add(c, new HashSet<String>());
+                    PathConstraints[c].UnionWith(PathConstraints[ast]);
               
                     
                     // PathConstraints.UnionWith(PathConstraints[ast]);
@@ -657,23 +683,16 @@ namespace test_task
 
         public override String IfVisitor(AST ast)
         {
-            PathConstraints[ast] = PathConstraints[ast.Parent];
+            if (!PathConstraints.ContainsKey(ast)) {
+                PathConstraints.Add(ast, new HashSet<String>());
+            }
+
+            PathConstraints[ast].UnionWith(PathConstraints[ast.Parent]);
+            PathConstraints[ast].Add(
+                Visit(ast.Children[0])
+            );
             Visit(ast.Children[1]);
             return "";
-            // String constrName = Visit(ast.Children[0]);
-            // // var cons = State.Solver.AddVariable(constrName);
-            // PathConstraints.Add(ast, new HashSet<String>());
-            // PathConstraints[ast].UnionWith(PathConstraints[ast.Parent]);
-            // PathConstraints[ast].Add(cons);
-            // return Visit(ast.Children[1]).UpdateOnConstraint(
-            //    constrName
-            // );
-
-
-            // return new State().UpdateOnConstraint(
-            //     ,
-            //     Visit(ast.Children[1])
-            // );
         }
 
         public override String DeclarationVisitor(AST ast)
