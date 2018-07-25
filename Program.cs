@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Collections;
 using System.Collections.Generic;
@@ -343,6 +343,148 @@ namespace test_task
         public override AST SinkVisitor(AST ast)
         {
             return ast;
+        }
+
+    }
+
+    public class PathVisitor : IVisitor<int>
+    {
+
+        public PathVisitor()
+        {
+            NodeMapping = new Dictionary<AST, int>();
+            PathConstraints = new List<HashSet<int>>();
+            Data = new Dictionary<int, HashSet<AST>>();
+        }   
+
+        // we need Node mapping and pathconstraits separate to save order
+        // in which we have visited nodes
+        private Dictionary<AST, int> NodeMapping {get; set; }
+        private Dictionary<int, HashSet<AST>> Data {get; set; }
+        private List<HashSet<int>> PathConstraints {get; set; }
+
+        private void RemoveUnreachable()
+        {
+            foreach (var ast in NodeMapping.Keys) {
+                if (ast.Node.Type != NodeType.Assigment) {
+                    PathConstraints[NodeMapping[ast]] = null;
+                }
+            }
+            for (int i = 0; i < PathConstraints.Count(); i++) {
+                if (PathConstraints[i] == null) {
+                    continue;
+                }
+                for (int j = i + 1; j < PathConstraints.Count(); j++) {
+                    if (PathConstraints[j] == null) {
+                        continue;
+                    }
+                    if (PathConstraints[i].IsSubsetOf(PathConstraints[j])) {
+                        PathConstraints[j] = null;
+                    }
+                }
+            }
+        }
+  
+
+        public List<int> PossibleValues()
+        {   
+            RemoveUnreachable();
+            var buff = new List<int>();
+            foreach (var k in Data.Keys) {
+                foreach (var ast in Data[k]) {
+                    if (PathConstraints[NodeMapping[ast]] != null) {
+                        buff.Add(k);
+                        break;
+                    }
+                }
+            }
+            return buff;
+        }
+
+        private HashSet<int> ParentConstraints(AST ast)
+        {
+            return PathConstraints[NodeMapping[ast.Parent]];
+        }
+
+        private void InitNode(AST ast)
+        {
+            if (!NodeMapping.ContainsKey(ast)) {
+                PathConstraints.Add(new HashSet<int>{-2});
+                NodeMapping.Add(ast, PathConstraints.Count() - 1);
+            }
+            
+            if (!ast.isRoot()) {
+                PathConstraints.Last().UnionWith(
+                    ParentConstraints(ast)
+                );
+            }
+        }
+
+        private void AddConstraint(AST ast, int constr)
+        {
+            PathConstraints.Last().Add(constr);
+        }
+
+        public override int BlockVisitor(AST ast)
+        {   
+            InitNode(ast);
+            ast.Children.Reverse();
+            foreach(var c in ast.Children) {
+                if (c.Node.Type == NodeType.If) {
+                    Visit(c);
+                }
+                else if (c.Node.Type == NodeType.Assigment) {
+                    var key = Visit(c);
+                    InitNode(c);
+                    if (!Data.ContainsKey(key)) {
+                        Data.Add(key, new HashSet<AST>());
+                    }
+                    Data[key].Add(c);
+                }
+            }
+            ast.Children.Reverse();
+            return 0;
+        }
+
+        public override int IfVisitor(AST ast)
+        {
+            InitNode(ast);
+            AddConstraint(
+                ast,
+                Visit(ast.Children[0])
+            );
+            Visit(ast.Children[1]);
+            return 0;
+        }
+
+        public override int DeclarationVisitor(AST ast)
+        {
+            return 0;
+        }
+
+        public override int AssigmentVisitor(AST ast)
+        {
+            return Visit(ast.Children[1]);
+        }
+
+        public override int LookupVisitor(AST ast)
+        {
+            return Visit(ast.Children[1]);
+        }
+
+        public override int VarNameVisitor(AST ast)
+        {
+            return 0;
+        }
+
+        public override int NumberVisitor(AST ast)
+        {
+            return Convert.ToInt32(ast.Node.Value);
+        }
+
+        public override int SinkVisitor(AST ast)
+        {
+            return 0;
         }
 
     }
@@ -906,11 +1048,6 @@ namespace test_task
         public AST Parent { get; }
         public List<AST> Children { get; set; }
 
-
-        public bool isLeaf() {
-            return Children == null;
-        }
-
         public bool isRoot() {
             return Parent == null;
         }
@@ -980,6 +1117,17 @@ namespace test_task
                     String.Join(
                         ", ",
                         visitor.PossibleValues()
+                    )
+                )
+            );
+            var visitor2 = new PathVisitor();
+            visitor2.Visit(ast);
+            Console.WriteLine(
+                String.Format(
+                    "[{0}]",
+                    String.Join(
+                        ", ",
+                        visitor2.PossibleValues()
                     )
                 )
             );
