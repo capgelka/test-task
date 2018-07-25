@@ -5,9 +5,6 @@ using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using System.Linq;
 
-using Decider.Csp.BaseTypes;
-using Decider.Csp.Integer;
-
 
 namespace test_task
 {   
@@ -16,99 +13,6 @@ namespace test_task
     {
         public static bool Debug = false;
     }
-
-
-    public class SATSolver
-    {
-
-        public SATSolver()
-        {
-            Constraints = new HashSet<ExpressionInteger>();
-            Vars = new Dictionary<String, VariableInteger>();
-            AddVariable("__system"); // avoid failing on empty solver calls
-        }
-
-        public HashSet<ExpressionInteger> Constraints { get; private set;}
-        public Dictionary<String, VariableInteger> Vars { get; }
-
-        public VariableInteger AddVariable(String name)
-        {
-            if (Vars.ContainsKey(name)) {
-                return Vars[name];
-            }
-            var vi = new VariableInteger(name, 0, 1);
-            Vars.Add(name, vi);
-            return vi;
-        }
-
-        public VariableInteger CreateVariable(String name)
-        {
-            return new VariableInteger(name, 0, 1);
-        }
-
-
-        public ExpressionInteger And(ExpressionInteger a, ExpressionInteger b)
-        {
-            return a & b;
-        }
-
-        public ExpressionInteger Or(ExpressionInteger a, ExpressionInteger b)
-        {
-            return a | b;
-        }
-
-        public ExpressionInteger Not(ExpressionInteger a)
-        {
-            return !a;
-        }
-
-        public void AddConstraint(ExpressionInteger constr)
-        {   
-            Constraints.Add(constr);
-        }
-
-        public bool Solve()
-        {
-            return _Solve(Vars.Values, Constraints);
-        }
-
-        public bool Solve(IEnumerable<ExpressionInteger> cl)
-        {
-            return _Solve(Vars.Values, cl);
-        }
-
-        public bool Solve(IEnumerable<VariableInteger> vars, IEnumerable<ExpressionInteger> cl)
-        {
-            return _Solve(vars, cl);
-        }
-
-        private bool _Solve(IEnumerable<VariableInteger> vars, IEnumerable<ExpressionInteger> cl)
-        {
-            var constraints = cl.Select(e => new ConstraintInteger(e == 1));
-
-            StateOperationResult searchResult;
-
-            IState<int> state = new StateInteger(vars, constraints);
-            state.StartSearch(out searchResult);
-            if (Config.Debug) {
-                if (searchResult == StateOperationResult.Solved) {
-                    Console.WriteLine("**Solution***");
-                    foreach (var v in vars) {
-                        Console.WriteLine("{0} {1}", v.Name, v);
-                    }
-                }
-            }
-            return (searchResult == StateOperationResult.Solved);
-
-        }
-
-        public void RemoveConstraints()
-        {
-            Constraints = new HashSet<ExpressionInteger>();
-        }
-
-    }
-
 
     public enum TokenType
     {
@@ -282,71 +186,6 @@ namespace test_task
 
     }
 
-    // it's much better to create a new tree but nothing bad 
-    // to modify the original in this case, which is much easier
-    public class SimplificationVisior : IVisitor<AST>
-    {
-
-        public override AST BlockVisitor(AST ast)
-        {
-            var children = new List<AST>();
-            bool assigmentExist = false;
-            ast.Children.Reverse();
-            foreach (var child in ast.Children) {
-                if (assigmentExist) {
-                    break;
-                }
-
-                if (child.Node.Type == NodeType.Assigment) {
-                    assigmentExist = true;
-                }
-                children.Add(Visit(child));
-            }
-            children.Reverse();
-            ast.Children = children;
-            return ast;
-        }
-
-        public override AST IfVisitor(AST ast)
-        {
-            foreach (var v in ast.Children) {
-                Visit(v);
-            }
-            return ast;
-        }
-
-        public override AST DeclarationVisitor(AST ast)
-        {
-            return ast;
-        }
-
-        public override AST AssigmentVisitor(AST ast)
-        {
-            return ast;
-        }
-
-        public override AST LookupVisitor(AST ast)
-        {
-            return ast;
-        }
-
-        public override AST VarNameVisitor(AST ast)
-        {
-            return ast;
-        }
-
-        public override AST NumberVisitor(AST ast)
-        {
-            return ast;
-        }
-
-        public override AST SinkVisitor(AST ast)
-        {
-            return ast;
-        }
-
-    }
-
     public class PathVisitor : IVisitor<int>
     {
 
@@ -398,6 +237,7 @@ namespace test_task
                     }
                 }
             }
+            buff.Reverse(); // just to see vars in the order they are in original programm
             return buff;
         }
 
@@ -409,7 +249,7 @@ namespace test_task
         private void InitNode(AST ast)
         {
             if (!NodeMapping.ContainsKey(ast)) {
-                PathConstraints.Add(new HashSet<int>{-2});
+                PathConstraints.Add(new HashSet<int>());
                 NodeMapping.Add(ast, PathConstraints.Count() - 1);
             }
             
@@ -485,185 +325,6 @@ namespace test_task
         public override int SinkVisitor(AST ast)
         {
             return 0;
-        }
-
-    }
-
-    public class SAVisitor : IVisitor<String>
-    {
-        public SAVisitor()
-        {
-            PathConstraints = new Dictionary<AST, HashSet<String>>();
-            Data = new Dictionary<int, HashSet<AST>>();
-        }   
-
-        private Dictionary<AST, HashSet<String>> PathConstraints {get; set; }
-        private Dictionary<int, HashSet<AST>> Data {get; set; }
-
-        private String VarName(String name)
-        {
-            if (name.StartsWith("!")) {
-                return name.Substring(1);
-            }
-            return name;
-        }
-
-        private SATSolver PrepareSolver(int value)
-        {
-            var Solver = new SATSolver();
-            List<ExpressionInteger> buff = new List<ExpressionInteger>();
-            foreach (var key in Data[value]) {
-                var tmp = new List<ExpressionInteger>();
-                if (Config.Debug) {
-                    Console.WriteLine("working on key {0}", value);
-                }
-                foreach (var c in PathConstraints[key]) {
-                    if (Config.Debug) {
-                        Console.WriteLine("\tworking on var {0}", c);
-                    }
-                    var expr = Solver.AddVariable(VarName(c));
-                    if (c.StartsWith("!")) {
-                        tmp.Add(
-                            Solver.Not(expr)
-                        );
-                    } else {
-                        tmp.Add(expr);
-                    }
-                }
-                if (tmp.Count() > 0) {
-                    buff.Add(
-                        tmp.Aggregate(
-                            (acc, el) => Solver.And(acc, el)
-                        )
-                    );
-                }
-            }
-            if (buff.Count() > 0) {
-                Solver.AddConstraint(
-                    buff.Aggregate(
-                        (acc, el) => Solver.Or(acc, el)
-                    )
-                );
-            }
-            return Solver;
-        }
-
-        public List<int> PossibleValues()
-        {
-            var buff = new List<int>();
-            if (Config.Debug) {
-                Console.WriteLine("-------Solving constraints-------");
-            }
-            foreach (var k in Data.Keys) {
-                var Solver = PrepareSolver(k);
-                if (Config.Debug) {
-                    Console.WriteLine("Solving for {0}", k);
-                }
-
-                if (Solver.Solve()) {
-                    buff.Add(k);
-                }
-            }
-            return buff;
-        }
-
-
-        private String Not(String name) 
-        {
-            if (name.StartsWith("!")) {
-                return name;
-            }
-            return "!" + name;
-        }
-
-        public override String BlockVisitor(AST ast)
-        {   
-            if (!PathConstraints.ContainsKey(ast)) {
-                PathConstraints.Add(ast, new HashSet<String>());
-            }
-            if (!ast.isRoot()) {
-                PathConstraints[ast].UnionWith(PathConstraints[ast.Parent]);
-            }
-            var buff = new HashSet<AST>();
-            foreach(var c in ast.Children) {
-                if (c.Node.Type == NodeType.If) {
-                    var constr = Visit(c.Children[0]);
-                    if (!PathConstraints.ContainsKey(c)) {
-                        PathConstraints.Add(c, new HashSet<String>());
-                    }
-                    if (buff.Count() > 0) {
-                        foreach(var b in buff) {
-                            if (Config.Debug) {
-                                Console.WriteLine("NEgative const on {0} for ", constr);
-                                b.Show();
-                            }
-                            PathConstraints[b].Add(Not(constr));
-                            Visit(b);
-                        };
-                    }
-                    buff.Add(c);
-                    Visit(c);
-                }
-                else if (c.Node.Type == NodeType.Assigment) {
-                    var key = Convert.ToInt32(Visit(c));
-                    if (!Data.ContainsKey(key)) {
-                        Data.Add(key, new HashSet<AST>());
-                    }
-                    Data[key].Add(c);
-                    buff.Add(c);
-                    if (!PathConstraints.ContainsKey(c)) {
-                        PathConstraints.Add(c, new HashSet<String>());
-                    }
-
-                    PathConstraints[c].UnionWith(PathConstraints[ast]);
-                }
-            }
-
-            return "";
-        }
-
-        public override String IfVisitor(AST ast)
-        {
-            if (!PathConstraints.ContainsKey(ast)) {
-                PathConstraints.Add(ast, new HashSet<String>());
-            }
-
-            PathConstraints[ast].UnionWith(PathConstraints[ast.Parent]);
-            PathConstraints[ast].Add(
-                Visit(ast.Children[0])
-            );
-            Visit(ast.Children[1]);
-            return "";
-        }
-
-        public override String DeclarationVisitor(AST ast)
-        {
-            return "";
-        }
-
-        public override String AssigmentVisitor(AST ast)
-        {
-            return Visit(ast.Children[1]);
-        }
-
-        public override String LookupVisitor(AST ast)
-        {
-            return Visit(ast.Children[1]);
-        }
-
-        public override String VarNameVisitor(AST ast)
-        {
-            return "";
-        }
-
-        public override String NumberVisitor(AST ast)
-        {
-           return ast.Node.Value;
-        }
-
-        public override String SinkVisitor(AST ast)
-        {
-            return "";
         }
 
     }
@@ -1104,12 +765,8 @@ namespace test_task
             if (Config.Debug) {
                 Console.WriteLine(new SExprVisitor().Visit(ast));
             }
-            ast = new SimplificationVisior().Visit(ast);
-            if (Config.Debug) {
-                Console.WriteLine(new SExprVisitor().Visit(ast));
-            }
-
-            var visitor = new SAVisitor();
+ 
+            var visitor = new PathVisitor();
             visitor.Visit(ast);
             Console.WriteLine(
                 String.Format(
@@ -1117,17 +774,6 @@ namespace test_task
                     String.Join(
                         ", ",
                         visitor.PossibleValues()
-                    )
-                )
-            );
-            var visitor2 = new PathVisitor();
-            visitor2.Visit(ast);
-            Console.WriteLine(
-                String.Format(
-                    "[{0}]",
-                    String.Join(
-                        ", ",
-                        visitor2.PossibleValues()
                     )
                 )
             );
